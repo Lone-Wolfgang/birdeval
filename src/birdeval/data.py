@@ -25,6 +25,10 @@ class EvalSet:
         start  (float, s)   segment start within the file
         end    (float, s)   segment end within the file
         labels (list[str])  canonical species keys present (may be empty)
+      and optionally
+        unreviewed (list[str])  species nobody checked in this segment. They
+                            are unknown (-1), not absent, unless also in
+                            `labels` (a positive annotation wins).
     classes: the canonical label vocabulary for this set. Metrics are computed
         over these classes; a class with zero positives is skipped by AP-style
         metrics but still counts towards coverage.
@@ -40,24 +44,33 @@ class EvalSet:
         if missing:
             raise ValueError(f"EvalSet {self.name!r} segments missing columns: {missing}")
         self.segments = self.segments.reset_index(drop=True)
-        unknown = {l for ls in self.segments["labels"] for l in ls} - set(self.classes)
-        if unknown:
-            raise ValueError(
-                f"EvalSet {self.name!r} has labels outside its class list: {sorted(unknown)[:10]}"
-            )
+        for col in ("labels", "unreviewed"):
+            if col not in self.segments:
+                continue
+            unknown = {l for ls in self.segments[col] for l in ls} - set(self.classes)
+            if unknown:
+                raise ValueError(
+                    f"EvalSet {self.name!r} has {col} outside its class list: {sorted(unknown)[:10]}"
+                )
 
     @property
     def files(self) -> list[str]:
         return sorted(self.segments["file"].unique())
 
     def target_matrix(self) -> np.ndarray:
-        """Binary [n_segments, n_classes] ground-truth matrix."""
+        """[n_segments, n_classes] int8 ground truth: 1 present, 0 absent, -1 not reviewed."""
         idx = {c: i for i, c in enumerate(self.classes)}
-        y = np.zeros((len(self.segments), len(self.classes)), dtype=np.uint8)
+        y = np.zeros((len(self.segments), len(self.classes)), dtype=np.int8)
+        if "unreviewed" in self.segments:
+            for r, unrev in enumerate(self.segments["unreviewed"]):
+                y[r, [idx[l] for l in unrev]] = -1
         for r, labels in enumerate(self.segments["labels"]):
-            for l in labels:
-                y[r, idx[l]] = 1
+            y[r, [idx[l] for l in labels]] = 1
         return y
+
+    def target_matrix_binary(self) -> np.ndarray:
+        """The old binary form (unknown -> 0). Metrics use target_matrix()."""
+        return (self.target_matrix() == 1).astype(np.uint8)
 
 
 @dataclass

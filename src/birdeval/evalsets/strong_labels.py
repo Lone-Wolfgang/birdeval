@@ -13,6 +13,16 @@ load_segments_csv   - already-segmented labels: file, start, end, labels
 
 Label strings can be scientific names (label_type: sci), eBird codes
 (label_type: ebird) or BirdNET-style "Sci_Common" (label_type: birdnet).
+
+Both take two options for data that wasn't exhaustively labelled. Anything
+not reviewed is unknown (-1) rather than absent, and metrics skip it:
+
+    reviewed_species: all     # or a list; other species are unknown everywhere
+    reviewed_ranges: null     # CSV file,start,end; a segment not fully inside
+                              # a reviewed range is unknown for every species
+
+With reviewed_ranges, files listed there but with no annotations are included
+as reviewed-and-empty, i.e. negatives.
 """
 
 from __future__ import annotations
@@ -44,6 +54,58 @@ def _map_labels(labels: pd.Series, taxonomy: Taxonomy, label_type: str) -> tuple
     return labels.map(lambda l: lut.get(l) if isinstance(l, str) else None), unmapped
 
 
+def _reviewed_species(reviewed_species, taxonomy: Taxonomy, label_type: str) -> set[str] | None:
+    if reviewed_species in (None, "all"):
+        return None
+    mapped, unmapped = taxonomy.map_many(list(reviewed_species), kind=label_type)
+    if unmapped:
+        raise ValueError(f"reviewed_species not in taxonomy: {unmapped}")
+    return set(mapped)
+
+
+def _read_ranges(path: str | None, audio_root: str | None) -> dict[str, np.ndarray] | None:
+    """file -> merged [n, 2] array of reviewed (start, end) intervals."""
+    if not path:
+        return None
+    df = pd.read_csv(path)
+    out = {}
+    for f, g in df.groupby(df["file"].map(lambda f: _resolve(audio_root, f))):
+        iv = sorted(zip(g["start"].astype(float), g["end"].astype(float)))
+        merged = [list(iv[0])]
+        for s, e in iv[1:]:
+            if s <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], e)
+            else:
+                merged.append([s, e])
+        out[f] = np.array(merged)
+    return out
+
+
+def _fully_reviewed(iv: np.ndarray | None, s: float, e: float) -> bool:
+    if iv is None:
+        return False
+    covered = np.clip(np.minimum(iv[:, 1], e) - np.maximum(iv[:, 0], s), 0, None).sum()
+    return covered >= (e - s) - 1e-6
+
+
+def _mark_unreviewed(
+    seg: pd.DataFrame,
+    classes: list[str],
+    reviewed: set[str] | None,
+    ranges: dict[str, np.ndarray] | None,
+) -> pd.DataFrame:
+    """Add the `unreviewed` column. Without either option, leave seg untouched."""
+    if reviewed is None and ranges is None:
+        return seg
+    not_reviewed = sorted(set(classes) - reviewed) if reviewed is not None else []
+    seg = seg.copy()
+    seg["unreviewed"] = [
+        not_reviewed if ranges is None or _fully_reviewed(ranges.get(f), s, e) else list(classes)
+        for f, s, e in zip(seg["file"], seg["start"], seg["end"])
+    ]
+    return seg
+
+
 def load_strong_labels(
     name: str,
     taxonomy: Taxonomy,
@@ -55,6 +117,8 @@ def load_strong_labels(
     min_event_overlap_s: float = 0.5,
     drop_partial_last: bool = True,
     max_files: int | None = None,
+    reviewed_species: str | list[str] = "all",
+    reviewed_ranges: str | None = None,
 ) -> EvalSet:
     cols = {"file": "file", "start": "start", "end": "end", "label": "label", **(columns or {})}
     ann = pd.read_csv(annotations)
@@ -63,7 +127,8 @@ def load_strong_labels(
     ann["label"], unmapped = _map_labels(ann["label"], taxonomy, label_type)
     ann = ann.dropna(subset=["label"])
 
-    files = sorted(ann["file"].unique())
+    ranges = _read_ranges(reviewed_ranges, audio_root)
+    files = sorted(set(ann["file"]) | set(ranges or {}))
     if max_files:
         files = files[:max_files]
 
@@ -81,7 +146,9 @@ def load_strong_labels(
             rows.append((f, s, e, sorted(set(ev.loc[hit, "label"]))))
 
     seg = pd.DataFrame(rows, columns=["file", "start", "end", "labels"])
-    classes = sorted(set(ann["label"]))
+    reviewed = _reviewed_species(reviewed_species, taxonomy, label_type)
+    classes = sorted(set(ann["label"]) | (reviewed or set()))
+    seg = _mark_unreviewed(seg, classes, reviewed, ranges)
     return EvalSet(name, seg, classes, meta={"source": "strong_labels", "unmapped": unmapped})
 
 
@@ -93,6 +160,8 @@ def load_segments_csv(
     label_type: str = "sci",
     sep: str = ";",
     classes: list[str] | None = None,
+    reviewed_species: str | list[str] = "all",
+    reviewed_ranges: str | None = None,
 ) -> EvalSet:
     df = pd.read_csv(path, keep_default_na=False)
     df["file"] = df["file"].map(lambda f: _resolve(audio_root, f))
@@ -104,4 +173,9 @@ def load_segments_csv(
     vocab = sorted({l for ls in df["labels"] for l in ls})
     if classes:
         vocab = sorted(set(vocab) | {taxonomy.from_sci(c) for c in classes})
-    return EvalSet(name, df[["file", "start", "end", "labels"]], vocab, meta={"unmapped": unmapped})
+    reviewed = _reviewed_species(reviewed_species, taxonomy, label_type)
+    vocab = sorted(set(vocab) | (reviewed or set()))
+    seg = _mark_unreviewed(
+        df[["file", "start", "end", "labels"]], vocab, reviewed, _read_ranges(reviewed_ranges, audio_root)
+    )
+    return EvalSet(name, seg, vocab, meta={"unmapped": unmapped})

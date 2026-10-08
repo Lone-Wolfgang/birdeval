@@ -64,3 +64,6 @@ evalsets:
   #   columns: {file: file, start: begin_s, end: end_s, label: species}
   #   segment_s: 5.0
   #   min_event_overlap_s: 0.5
+  #   # Not exhaustively labelled? Unreviewed cells are unknown (-1), not absent:
+  #   reviewed_species: all           # or [Turdus merula, ...]
+  #   reviewed_ranges: null           # CSV file,start,end of time an expert listened to
