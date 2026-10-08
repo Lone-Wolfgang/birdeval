@@ -18,7 +18,7 @@ birdeval check --audio some_bird.wav              # load every model, run it, sh
 
 `birdeval check` downloads weights on first use (BirdNET 3.0 is the slow one,
 about 6 min the first time), runs each model on a generated 12 s clip and a
-2 s clip (shorter than any window), and validates shapes and score ranges.
+2 s clip (shorter than any window), and checks shapes and that scores are finite.
 Any `--audio` clips get a top-3 species list. A model that fails is reported
 without stopping the rest, and the exit code is nonzero.
 
@@ -36,9 +36,10 @@ birdeval run -m birdnet_2.4 -e birdset_POW_smoke
 ## How it works
 
 ```
-EvalSet loader ──> segments (file, start, end, labels) ─┐
-                                                        ├─> align ─> metrics ─> results/
-ModelAdapter ──> window scores ──> cache (.npz) ────────┘
+EvalSet loader ──> segments (file, start, end, labels) ─────────┐
+                                                               ├─> align ─────> segment metrics
+ModelAdapter ──> raw logits ──> cache (.npz) ──> scorer ───────┤
+                                                               └─> aggregate ─> recording-level metrics
 ```
 
 - **One canonical label space**: normalised scientific names. BirdNET's
@@ -49,10 +50,16 @@ ModelAdapter ──> window scores ──> cache (.npz) ────────
   which loads BirdNET 2.4, BirdNET 3.0 and Perch V2 behind one `predict()`.
   The adapter asks for full score vectors (no top-k / threshold cut-off),
   restricted to the eval set's classes.
-- **Raw window scores are cached before alignment.** Changing the alignment
-  rule or adding a metric never re-runs inference. The cache key hashes every
-  model parameter that changes output, so changing `overlap_s` or a model
-  version starts a fresh cache.
+- **Raw logits are cached before alignment.** Changing the alignment rule,
+  the scorer or a metric never re-runs inference. The cache key hashes every
+  model parameter that changes output (including `score_space`), so changing
+  `overlap_s` or a model version starts a fresh cache. BirdNET 3.0 exports
+  only probabilities, so its logits are reconstructed
+  (`score_space: logit_from_prob`).
+- **Scorer** (`scoring.py`, `scoring.method`): `logit` (default) or an
+  unclipped `sigmoid`, applied to cached logits. Ranking metrics are identical
+  for both. Softmax is deliberately not offered: in soundscapes several
+  species call at once, and softmax makes them compete.
 - **Alignment** (`align.py`): a segment's score per class is the max over model
   windows overlapping it by ≥ `min_overlap_s`. Same rule for every model.
 - **Metrics** (`metrics.py`): cmAP, AUROC, top-1 (BirdSet's set), plus a
@@ -65,7 +72,7 @@ Every result is reported three ways:
 
 | scope   | classes scored                              | use for                         |
 |---------|---------------------------------------------|---------------------------------|
-| all     | every eval class (unpredictable ones = 0)   | "how useful is this out of the box" |
+| all     | every eval class (unpredictable ones score lowest) | "how useful is this out of the box" |
 | covered | classes this model can predict              | per-model diagnostics           |
 | shared  | classes **every model in the run** can predict | **comparing models**         |
 
@@ -73,14 +80,64 @@ Every result is reported three ways:
 first run: entries there that the model *should* know are taxonomy mismatches
 to add to `synonyms.yaml`.
 
+## Recording-level results
+
+Deployment claims "species X is present in recording R" and backs each claim
+with a clip someone can listen to. Precision matters more than recall. So
+alongside the segment metrics, every run reports two recording-level layers
+(`recording_level` in the config; on by default):
+
+- **Presence (headline numbers):** each (unit, species) pair gets a
+  confidence: the max window score in the unit. A unit is a whole file, or
+  `unit_s`-long chunks to match a deployment's recording length. The pair
+  is present if any segment in the unit is.
+  - *rec cmAP*: per-species AP across units.
+  - *Recall at precision ≥ target* (default 0.9): the lowest threshold whose
+    pooled precision meets the target, and the recall it gets.
+  - *List precision*: at that threshold, the fraction of claimed species that
+    are really there. Pooled, and averaged per unit.
+  - *By duration*: the same, per duration bin, at the global threshold. With
+    max-pooling, longer recordings give absent species more chances at one
+    high window.
+  - Bootstrap CIs resample sites (if the eval set has a `site` column) or files.
+- **Evidence:** the claim's evidence clip is its max-scoring window.
+  *Evidence precision* is how often that clip contains the species.
+  *Conditional evidence precision* counts only claims that are right at the
+  unit level, which separates "wrong species" from "right species, wrong clip".
+
+`fp_review.csv` lists the highest-scoring wrong claims with their clip times.
+It's the list for an expert to listen to: some "false positives" will be
+missed labels, which tells us where the precision ceiling really is.
+
+### Labels: three states
+
+Ground truth is 1 (present), 0 (absent) or −1 (not reviewed). Unreviewed cells
+are skipped by every metric, at both levels, so a real but unlabelled call
+the model finds is neither a hit nor a false positive. For your own data, set
+`reviewed_species` and/or `reviewed_ranges` on `strong_labels` /
+`segments_csv` (see the commented `mine:` entry in the config). The defaults
+treat everything unlabelled as absent, which gives the same numbers as
+before. BirdSet is exhaustively annotated, so it always uses the defaults.
+
+> Results on our own data assume exhaustive labelling. If labelling was not
+> exhaustive, precision is a lower bound.
+
 ## Outputs
 
 ```
-results/<run>/summary.csv                     one row per model × evalset × scope
-results/<run>/<evalset>/<model>/summary.json  metrics, CI, coverage, model + alignment config
+results/<run>/summary.csv                     one row per model × evalset × scope (segment + rec_* columns)
+results/<run>/<evalset>/<model>/summary.json  segment metrics, CI, coverage, model / scoring / alignment config
 results/<run>/<evalset>/<model>/per_class_<scope>.csv
 results/<run>/<evalset>/<model>/uncovered_classes.txt
+results/<run>/<evalset>/<model>/recording_level.json  presence + evidence metrics per scope, by duration, CIs
+results/<run>/<evalset>/<model>/presence.csv          unit, species, presence_conf, features, evidence window, truth
+results/<run>/<evalset>/<model>/detections.csv        file, start, end, species, confidence, unit,
+                                                      presence_correct, evidence_correct
+results/<run>/<evalset>/<model>/fp_review.csv         top wrong claims to listen to, by score
 ```
+
+`detections.csv` uses the threshold that meets the first precision target on
+the `all` scope. It is empty, with a warning, if no threshold reaches it.
 
 ## Adding things
 
@@ -104,12 +161,17 @@ results/<run>/<evalset>/<model>/uncovered_classes.txt
   onnxruntime 1.30, Apple Silicon). All three models put *Turdus merula* first
   on a blackbird recording. This covers loading and inference, not BirdSet
   data loading.
-- **Perch V2 scores saturate under sigmoid.** Perch's logits sit well above 0
-  even for absent species (about 7–9 for background species and 12–14 for the
-  true species on the blackbird clip), so sigmoid pushes almost everything
-  toward 1. birdnet clips logits at ±15 before the sigmoid, so very confident
-  windows tie. Ranking metrics are unaffected until logits reach 15. Before
-  trusting Perch numbers, decide whether to score it with raw logits or softmax.
+- **Perch V2 logits are high for everything** (about 7–9 for absent species,
+  12–14 for present ones on the blackbird clip). birdnet's own sigmoid clips
+  at ±15 and caused ties, so the cache now holds raw logits and the scorer
+  stage decides what metrics see. Raw Perch scores are not probabilities, and
+  a fixed threshold won't transfer between models. Compare models on the
+  threshold-free metrics or on recall at a target precision, never at a
+  shared raw threshold.
+- **Training-data overlap.** Before comparing models on BirdSet, check each
+  model's documentation for whether any BirdSet test sites were in its
+  training data. A model that trained on a site will look better there than
+  it will in deployment.
 - **BirdNET 3.0 is a developer preview.** Labels and scores will change between
   releases; the package version is recorded in every `summary.json`.
 - **Window overlap matters.** With max-pooling, overlapping windows near a
