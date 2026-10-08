@@ -1,157 +1,170 @@
-# birdeval: decision point on BirdSet data for recording-level evaluation
+# birdeval: decision point on matching model windows to labelled segments
 
-*Written 2026-10-08, after Phases 1–4 of `spec_recording_level_evel.md` were built. This is meant to be read on its own, without access to the repo.*
+*Written 2026-10-08, after the soundscape-mode build and the first real BirdSet run. This is meant to be read on its own, without access to the repo. The previous decision write-up (BirdSet clips vs soundscapes) is in git history at commit `badc4c3`.*
 
 ## Summary
 
-The harness can now evaluate at the recording level: is species X present in recording R, and does the clip cited as evidence actually contain it? Phases 1–4 of the spec are built and tested. The spec's last check is a real run on BirdSet's POW smoke set, and it can't give meaningful recording-level results as the code stands. The BirdSet split we load, `test_5s`, isn't 5-second slices of longer recordings. It's 4,560 separate 5-second audio files, so every "recording" would be one 5 s clip.
+The harness now evaluates models on BirdSet's full soundscape recordings. The first real run (BirdNET 2.4, BirdNET 3.0 and Perch V2 on the 76 POW recordings) is done. Recording-level results look sound.
 
-We need to decide how to give the harness real recordings from BirdSet. My recommendation is a **soundscape mode**: run models on BirdSet's full 5-minute recordings, using BirdSet's official 5 s labels placed back on each recording's timeline. The current clip mode stays, for comparison with published BirdSet numbers. Option D below is a cheaper alternative worth weighing.
+Segment-level results exposed a problem with how model windows are matched to 5 s labelled segments. With the current rule, a single global `min_overlap_s = 1.0`, Perch V2's 5 s windows score calls in the neighbouring segment. Its segment cmAP drops from 0.567 on clips to 0.471 on soundscapes. Raising the threshold to 2.6 s fixes Perch (0.552) but costs BirdNET 2.4 about 0.015 cmAP, because its 3 s windows are excluded more often.
+
+**The current lean is option 1: a per-model overlap rule.** It reuses the cached inference, needs no new model runs, and leaves recording-level results essentially unchanged. The open questions are how to choose each model's value without tuning on the test set, and how to report it.
 
 ---
 
 ## 1. Background
 
-**birdeval** is one harness for any model × any eval set. Models and eval sets live in a config file, and a run picks combinations. The longer-term goal is a dashboard where users swap models (base or fine-tuned) and evaluate them on public and private datasets.
+**birdeval** is one harness for any model × any eval set, heading towards a dashboard for comparing base and fine-tuned bird-sound models on public and private data. Deployment is passive recorders capturing soundscapes. Precision matters more than recall.
 
-How it works today:
+The pipeline:
 
 ```
-eval set loader ──> labelled segments (file, start, end, species) ─┐
-                                                                   ├─> align ─────> segment metrics
-model ──> raw logits per window ──> cache ──> scorer ──────────────┤
-                                                                   └─> aggregate ─> recording-level metrics
+eval set ──> labelled 5 s segments ─────────────────────┐
+                                                        ├─> align (max-pool windows → segments) ──> segment metrics
+model ──> raw logits per window ──> cache ──> scorer ───┤
+                                                        └─> aggregate (per recording) ──────────────> recording-level metrics
 ```
 
-- **Models:** BirdNET 2.4, BirdNET 3.0 and Perch V2, all loaded through the official `birdnet` Python package (1.1.1).
-- **Eval sets:** BirdSet test sets from Hugging Face (8 sites: HSN, NBP, NES, PER, POW, SNE, SSW, UHH). Our own expert-labelled data, about 25k labels, goes in through `strong_labels` / `segments_csv`.
-- **Deployment context that drives the design:** passive recorders capture whole soundscapes. The output is a detection table (`start, end, species, confidence`) whose rows a person can listen to. **Precision matters more than recall.**
+- **Models:**
+  - BirdNET 2.4: 3 s windows, 1.5 s hop.
+  - BirdNET 3.0: 3 s windows, 1.5 s hop; a developer preview.
+  - Perch V2: 5 s windows, 2.5 s hop.
+- **Labels:** BirdSet's official 5 s segment labels.
+- **Alignment rule today:** a segment's score for a species is the **max** over model windows that overlap the segment by at least `min_overlap_s` (one global value, default 1.0 s). This is the only part of the pipeline the decision affects.
 
-## 2. What has been done
+## 2. What was built and tested since the last decision
 
-### 2.1 Every target model loads and runs
+The previous decision chose **soundscape mode**: run models on BirdSet's full recordings, and place the official 5 s clip labels at each clip's offset. All requested items were built, each committed with tests (51 tests passing):
 
-- Set up an isolated environment (Python 3.12, birdnet 1.1.1, TensorFlow 2.21, onnxruntime 1.30) on an Apple M4 Pro.
-- Added a `birdeval check` command. It loads each model, runs it on generated clips and on any real recordings given, checks the output shapes and values, and prints the top species.
-- On a Eurasian Blackbird recording, all three models rank *Turdus merula* first.
-- Bugs fixed along the way:
-  - Perch V2 crashed on every call, because of a birdnet setting default.
-  - The birdnet version recorded in results was always "unknown".
-  - A test failed on macOS because of a path quirk.
+| Commit | What |
+|---|---|
+| `badc4c3` | **Soundscape mode** (`birdset_<SITE>_scape` eval sets). Time not covered by any labelled clip is marked "not reviewed". Bootstrap resamples whole recordings (site, else source recording, else file), including when recordings are chunked into shorter units. Precision targets 0.8 / 0.9 / 0.95, with 0.9 as the operating point. Per-species precision and recall at each global threshold. Tests pin a finite floor score for classes a model can't predict. |
+| `91a602e` | **Label report script**, from metadata only: label density for all 8 BirdSet sites, and the cross-check of soundscape labels against labels rebuilt from call-level annotations. |
+| `ad66105` | README for all of the above. |
+| `fc86ba3` | **Crash-safe inference.** Each file is cached as soon as it's scored, and writes are atomic. An interrupted run resumes where it stopped. |
+| `30068e8` | **Performance fix.** Recording-level metrics took about 15 min per model on 4,560 clips because of a quadratic loop. They now take seconds, with byte-identical outputs. |
 
-### 2.2 Spec Phases 1–4
+Along the way we found that the original BirdSet loader would have downloaded about 16 GB of training audio per site. Both modes now use BirdSet's test-only download.
 
-Each phase is its own commit, and the full test suite (38 tests) passes after each one.
+### 2.1 Verification results
 
-| Phase | What it does | Key evidence |
-|---|---|---|
-| 1. Raw logits + scorer | The cache stores raw logits, and a scorer step (`logit` or `sigmoid`) is applied after the cache, so changing it never re-runs a model. BirdNET 3.0 only outputs probabilities, so its logits are reconstructed. | On a real clip, sigmoid of the stored logits matches the old scores to within 9e-8 (BirdNET 2.4 and Perch). |
-| 2. Three-state labels | Present / absent / not reviewed. Metrics skip anything not reviewed. | A test confirms that with default settings, cmAP, AUROC, top-1 and the bootstrap interval equal the old code exactly. |
-| 3. Recording-level presence | Each (unit, species) pair gets a confidence: the best window score in the unit. Reports cmAP across recordings, recall at a target precision (default 0.9), list precision, results by recording length, and bootstrap intervals. | Recall-at-precision is tested against hand-computed answers, including tied scores. |
-| 4. Evidence + review export | Checks whether the cited clip contains the species. Writes `detections.csv` (the deployment table plus truth columns) and `fp_review.csv` (the top wrong claims, for an expert to listen to). | The spec's planted case is tested: the right species is claimed, but the cited clip contains a different species. |
+**Soundscape labels are right.** Labels rebuilt from BirdSet's call-level annotations (a call counts if it overlaps a segment by ≥ 0.5 s) agree exactly with the official labels on:
 
-Phase 5 (a calibrated presence score) is deliberately not started. The spec says to begin it only after looking at a real BirdSet run.
+| | POW | HSN | SSW | NES | UHH | SNE | PER | NBP |
+|---|---|---|---|---|---|---|---|---|
+| Exact segment agreement | **100%** | 99.4% | 99.4% | 99.2% | 98.9% | 98.4% | 96.2% | 52.0% |
 
-### 2.3 Why Phase 1 mattered
+NBP isn't a soundscape set: it's 539 "recordings" of about 5 s each. On POW, soundscape mode and clip mode carry identical labels (12,911 labelled cells each).
 
-On the blackbird clip, Perch V2's raw scores were about 7–9 for absent species and 12–14 for the species actually there. birdnet's own sigmoid caps scores at ±15, so Perch's most confident windows were tying with each other, and after the sigmoid everything read 1.00. BirdNET 2.4 had the opposite problem: about 65k scores fell below −15, all tied at the bottom.
+**Label density per site:**
 
-Raw logits remove both kinds of tie. They also make one rule explicit: **raw scores from different models are not comparable.** Models should be compared on threshold-free metrics, or on recall at a fixed precision target. Never compare them at a shared raw threshold.
+| Site | Recordings | Length | Hours | Species | Clips labelled | Species per recording |
+|---|---|---|---|---|---|---|
+| POW | 76 | 300 s | 6.3 | 48 | 97% | 9.0 |
+| HSN | 100 | 600 s | 16.7 | 21 | 45% | 3.6 |
+| UHH | 635 | 60–540 s | 50.9 | 27 | 71% | 4.0 |
+| NES | 34 | 1 h | 34 | 89 | 39% | 10.7 |
+| PER | 21 | 1 h | 21 | 132 | 90% | 37.4 |
+| SNE | 33 | 1 h | 33 | 56 | 69% | 9.9 |
+| SSW | 285 | 1 h | 285 | 81 | 32% | 7.5 |
+| NBP | 539 | ≈5 s | 0.6 | 51 | 100% | 1.7 |
 
-### 2.4 Places where I interpreted or went beyond the spec
+**The new code reproduces the old results.** On all 4,560 POW clips:
+- BirdNET 2.4's segment cmAP, AUROC and top-1 are identical.
+- Perch's cmAP differs by +0.00015, from tie-breaking (the old pipeline's float32 sigmoid compressed scores near 1).
+- Raw scores agree to within 1.8e-7.
+- Confidence intervals are wider now, because the bootstrap resamples whole recordings instead of individual 5 s clips. That's the more honest interval.
+- The 3-clip smoke set was too small to score any species in either version.
 
-These are worth a second look:
+**Crash safety was tested for real.** A run was killed with `kill -9` after its first recording was cached. It left no orphaned processes or temp files, and the restart scored only the remaining 2 of 3 recordings.
 
-1. **Scores for classes a model can't predict** used to be fixed at 0.0. In logit space 0.0 means 50%, which would let those classes win top-1. They now default to the lowest possible score.
-2. **Evidence is "unknown"** if the cited clip overlaps any unreviewed segment and no labelled call. The spec said "all unreviewed". I used "any" because the missed call could be in the unreviewed part. This matches how recording-level truth is defined.
-3. **Results by recording length** use the global operating threshold rather than picking a new threshold for each length bin. Picking per bin would hide the effect we're looking for: longer recordings give absent species more chances to score one high window.
-4. **`fp_review.csv`** lists the top wrong claims whether or not they pass the threshold, so there's a listening list even when the 0.9 precision target is never reached.
-5. **Files that appear only in `reviewed_ranges`** (reviewed, no birds) are now included as negatives. Before, they were silently dropped.
-6. **No before/after comparison on real data.** A BirdSet run has never been done, so the spec's requirement that "segment numbers match the pre-change run" can only be checked on synthetic data, which the tests do.
+### 2.2 First real run: POW soundscapes (76 recordings × 300 s)
 
-## 3. The problem: what BirdSet's `test_5s` split actually is
+Shared scope. 3,572 (recording, species) pairs, 684 present (19%).
 
-I checked the POW metadata files directly. They are small parquet files on the Hugging Face repo's `data` branch.
+| | BirdNET 2.4 | BirdNET 3.0 | Perch V2 |
+|---|---|---|---|
+| Segment cmAP (95% CI), current alignment | 0.588 (0.566–0.664) | 0.674 (0.649–0.719) | 0.471 (0.461–0.539) |
+| Recording cmAP | 0.767 | 0.875 | 0.793 |
+| Recall at 90% precision (95% CI) | 0.785 (0.76–0.81) | 0.825 (0.76–0.86) | 0.556 (0.50–0.61) |
+| Recall at 95% precision | 0.757 | 0.734 | 0.480 |
+| Evidence precision at 90% | 0.847 | 0.864 | 0.870 |
+| Evidence precision, right-species claims only | 0.940 | 0.959 | 0.966 |
 
-| | `test_5s` (what we load today) | `test` |
-|---|---|---|
-| Rows | 4,560 | 16,052 |
-| A row is | a **separate 5 s audio file**, e.g. `Recording_1_Segment_03_000_005.ogg`, with start 0 and end 5 | one labelled call (start, end, eBird code) inside a full recording |
-| Audio | its own shard, about 200 MB | full recordings, about 440 MB |
-| Labels | multi-label eBird codes per 5 s clip (BirdSet's official labels) | call-level ("strong") labels |
+Reading these:
+- **Recording-level results are reliable and barely depend on alignment.** They take the max over the whole recording, so window-to-segment matching hardly matters (see §3).
+- **Perch ranks species well but suffers from one shared threshold.** Its recording cmAP (0.793) beats BirdNET 2.4's, but its recall at fixed precision is much lower. Its raw scores sit at different levels for different species, so one global cutoff serves it badly. Per-species calibration (spec Phase 5) is the planned fix.
+- **Evidence clips are reliable.** When the species claim is right, the cited clip contains it 94–97% of the time.
+- **Only one site, 76 recordings,** and BirdNET 3.0 is a developer preview.
 
-- **POW:** 76 recordings, each exactly 300 s (60 clips each), 48 species. 97% of clips have at least one label.
-- **The clip filename encodes where it came from.** `Recording_1_Segment_03_000_005.ogg` is seconds 0–5 of `Recording_1_Segment_03.ogg`.
+## 3. The decision: matching windows to segments
 
-**Why this blocks recording-level evaluation:** the loader treats each audio file as a recording. With `test_5s`, every recording is a single 5 s clip. "Is species X anywhere in this recording?" becomes "is it in this 5 s clip?", which is just the segment-level task again. The recording-length breakdown and the evidence check (where in the recording is the call?) lose their meaning. A smoke run would technically succeed and the numbers would look plausible, but they wouldn't measure what the spec is for.
+### 3.1 The problem
 
-Segment-level evaluation on `test_5s` is still valid. It's BirdSet's published protocol.
+With max-pooling, a window that overlaps a segment contributes its score to it, even if most of the window lies in the next segment.
 
-## 4. Options
+- **Perch:** 5 s windows at a 2.5 s hop. Every 5 s segment is overlapped by its own window plus two neighbours, each by 2.5 s. With `min_overlap_s = 1.0`, both neighbours count, so a call in segment *k* also scores in segments *k−1* and *k+1*.
+- **BirdNET:** 3 s windows at a 1.5 s hop. Windows straddling a boundary overlap the neighbour by 1.5–2.5 s, so there's some bleed too, but less.
+- **Clip mode hides all of this,** because each clip is a separate file and windows can't cross clip boundaries.
 
-### A. Keep clips only (status quo)
+### 3.2 Evidence: `min_overlap_s` sweep from cache
 
-- **Pro:** no work, and comparable to published BirdSet numbers.
-- **Con:** recording-level results on BirdSet are meaningless. They'd only be usable on our own data.
+A parallel session ran this; I checked the outputs.
 
-### B. Soundscape mode with official labels (recommended)
+| `min_overlap_s` | Perch, soundscapes | Perch, clips | BirdNET 2.4, soundscapes | BirdNET 2.4, clips |
+|---|---|---|---|---|
+| 1.0 (current) | cmAP 0.471, top-1 0.839 | 0.567 | cmAP 0.588, top-1 0.935 | 0.594 |
+| 2.6 | cmAP **0.552**, top-1 **0.936** | 0.551 | cmAP 0.574, top-1 0.979 | 0.579 |
 
-- Load the 76 full recordings from the `test` split, and run models on continuous audio.
-- Labels come from `test_5s`: each clip's labels go onto its recording's timeline at the offset in its filename. That gives the same 5 s grid and the same official labels, just on full recordings.
-- **Pro:** this matches deployment, since recorders capture continuous audio and model windows can span 5 s boundaries as they do in the field. A unit is a real 300 s recording, so recording-level results and evidence times are meaningful. The labels are exactly BirdSet's.
-- **Con:**
-  - Segment numbers will differ slightly from BirdSet's published clip protocol, because windows can now cross clip boundaries.
-  - It's an extra download (about 440 MB per site for POW; other sites differ).
-  - The loader needs a filename-to-offset mapping that we must check holds across all 8 sites.
+These are segment-level results on the classes each model can predict.
 
-### C. Soundscape mode with our own segmentation of call-level labels
+- **At 2.6 s, only Perch's own centred window counts,** and Perch on soundscapes matches Perch on clips (0.552 vs 0.551). The drop was an alignment artifact, not the model.
+- **2.6 s hurts BirdNET's cmAP.** A 3 s window can overlap a 5 s segment by at most 3 s, so 2.6 s excludes most of its windows and leaves fewer chances to catch a call. BirdNET's top-1 *rises* (0.935 → 0.979), so bleed was affecting BirdNET too.
+- **Recording-level cmAP moves by at most 0.002.**
+- **BirdNET 3.0 wasn't in the sweep.**
 
-- Same audio as B, but labels are built from the call-level `test` labels using our existing event-to-segment rule. A segment counts as positive if a call overlaps it by at least 0.5 s.
-- **Pro:** reuses the existing `strong_labels` code, and the call-level labels are richer (exact call times).
-- **Con:** our overlap rule may not match how BirdSet derived its 5 s labels, so results stop being on BirdSet's official labels. It's best used as a **cross-check** of B: if B's and C's labels mostly agree, the mapping is right.
+So no single global value is neutral across window lengths.
 
-### D. Group clips into virtual recordings (cheapest)
+### 3.3 Options
 
-- Keep loading `test_5s` clips and running models on each 5 s clip. Add a `recording` column parsed from the filename, and let a unit span several clip files (the 60 clips of one recording).
-- **Pro:** no new audio download. Segment numbers stay identical to BirdSet's published protocol, and recording-level results become meaningful.
-- **Con:**
-  - Models never see continuous audio, so calls cut at clip boundaries are scored in pieces. Window placement within 5 s clips is also odd: BirdNET's 3 s windows give a partial last window per clip.
-  - That differs from deployment.
-  - Aggregation currently assumes one audio file per unit, so it would need generalising. That's moderate work.
+1. **Per-model overlap rule (current lean).** Each model gets its own `min_overlap_s`; the global value stays as the default.
+   - Pros: reuses the cache with no new inference; quick; keeps each model's natural windowing.
+   - Cons: segment results now depend on a per-model setting that must be chosen and justified.
+2. **Align windows to the 5 s grid.** For example, Perch with no window overlap (hop = 5 s); BirdNET would need a hop that tiles 5 s segments.
+   - Pros: cleanest comparisons; nothing to tune.
+   - Cons: needs new inference; changes what the model sees (fewer windows, so less chance to catch calls at boundaries); doesn't map cleanly onto BirdNET's 3 s windows.
+3. **Keep one global value and document the bias.**
+   - Pros: no work.
+   - Cons: segment-level comparisons between Perch and BirdNET stay biased in BirdNET's favour.
 
-### Recommendation
+### 3.4 Points to settle for option 1
 
-**Build B, keep A, and use C once as a one-off check of B's label mapping.** A is still useful for comparison with BirdSet papers. The deciding argument is that the spec is about *deployment* claims on continuous recordings, and only B and C evaluate models the way they'll be used.
+1. **How to choose each model's value without tuning on the test set.** Picking 2.6 s for Perch because it gave the best POW numbers is tuning on test data. Better to fix a rule from window geometry *before* looking at results. Candidates:
+   - **"Most of the window lies inside the segment":** overlap > window length / 2. Perch: > 2.5 s. BirdNET (3 s windows): > 1.5 s.
+   - **"Only windows whose centre falls in the segment":** a rule about window position rather than an overlap amount. Each window then contributes to exactly one segment, which removes double counting.
+   - **Check either rule:** each model's soundscape result should land close to its clip result, as Perch did at 2.6 s.
+   - Neither rule has been run yet. BirdNET at 1.5 s or with the centre rule is untested, and so is BirdNET 3.0 (which also accepts variable segment lengths).
+2. **Config shape.** For example `models.<name>.min_overlap_s`, overriding `alignment.min_overlap_s`. The value should be recorded in each `summary.json` and should probably not change the cache key, since alignment happens after the cache.
+3. **What else uses `min_overlap_s`.** Recording-level unit membership and the evidence-correctness check reuse the alignment value. Should they follow the per-model value too? Recording-level results barely move, but evidence correctness does depend on which windows overlap labelled calls.
+4. **Reporting.** Each run should record the rule used per model, and the README should explain that segment-level comparisons are "model + its alignment rule". Should we also keep reporting a common global setting, so results stay comparable with BirdSet's published protocol?
+5. **Is a centre-based rule better than an overlap threshold?** It's simpler to explain, has nothing to tune, and gives each window to exactly one segment. The cost is a little sensitivity at segment edges.
 
-D is a reasonable alternative if download size or segment-level comparability with published BirdSet numbers matters more than matching deployment. The difference between B and D at recording level is probably small, but that's an empirical question we haven't measured.
+## 4. Other open items, not part of this decision
 
-## 5. Things to know about POW whichever option is chosen
+- **Phase 5 (per-species calibration).** It's now motivated by Perch's shared-threshold problem.
+  - `n_above` is useless as a calibration feature for Perch: with `tau = 0`, every one of its windows counts as "above", because its raw scores are always positive. `tau` needs to be set per model.
+- **Training-data overlap:** nobody has yet checked whether any model trained on recordings from BirdSet's test sites.
+- **Uncovered time at the other sites:** measured only at POW (none). Some sites' last clips are partial (e.g. HSN, NES, SNE, UHH). Under the three-state rule, any unreviewed tail makes every absent species "unknown" for that whole recording, which would remove those negatives from recording-level metrics. This needs checking before trusting those sites.
+- **More sites:**
+  - one sparse site (e.g. SSW: 32% of clips labelled, 1 h recordings, but 285 h of audio);
+  - one long-recording site, to see whether recording length affects precision;
+  - PER is very dense (37 species per recording).
+- **`fp_review.csv` is ready for expert listening.** BirdNET 2.4's top "false positive" on POW is a Black-capped Chickadee scored highly in 13 windows of one recording, a likely missed label.
+- **Housekeeping:** two scratch git worktrees (`baseline` at the old commit, `crashsafe`) and the merged branch `crash-safe-cache` can be removed.
 
-These affect how much the first results can tell us:
+## 5. Questions to discuss
 
-1. **All 76 recordings are exactly 300 s.** With whole-file units, the recording-length breakdown has a single bin, so it's useless. Setting `unit_s: 60` gives 380 one-minute units across one length bin. To actually see a length effect, run several `unit_s` values (e.g. 30, 60, 150, 300) and compare.
-2. **76 recordings is a small sample.** Bootstrap intervals on recording-level numbers will be wide. Treat POW as the smoke test, and pool sites, or use HSN/SSW etc., for real conclusions.
-3. **POW is dense.** 97% of clips are labelled, and the common species will be present in most recordings. Recording-level precision for common species will look easy. Per-species results and `fp_review.csv` matter more than the pooled headline.
-4. **POW is one site (Powdermill).** Bootstrapping by site isn't possible, so the harness resamples by file.
-5. **Training-data overlap.** Before comparing models on BirdSet, check whether any model trained on recordings from BirdSet's test sites. This is noted in the README, but nobody has checked the actual model documentation yet.
-
-## 6. Prerequisites for any BirdSet run (not done yet)
-
-- Install `datasets<4`. BirdSet uses a Hugging Face loading script, and `datasets` 4.x removed support for those.
-- Get the eBird taxonomy CSV. The public eBird API serves it without a key, with `SPECIES_CODE` and `SCIENTIFIC_NAME` columns that the harness already reads.
-- BirdSet's loading script and the column names in our loader have never been run against the live dataset. The first run will confirm them.
-
-## 7. Questions to settle
-
-1. **B (continuous audio, matches deployment) or D (clips grouped, matches BirdSet's protocol, no new download)?** Or B now and D later, to measure how much the choice matters?
-2. **What unit lengths should we evaluate?** Does the deployment produce a fixed recording length (e.g. 1 min, 5 min, 1 h)? That decides `unit_s` and the length bins.
-3. **Is 0.9 the right precision target, and is one global target enough?** Phase 5 adds per-species thresholds. Should anything move earlier?
-4. **Which sites after POW?** I'd suggest one dense site and one sparse site, to see how prevalence affects recording-level precision.
-5. **Our own 25k-label set:** was labelling exhaustive, per species or per time range? This decides whether we set `reviewed_species` and/or `reviewed_ranges`, and whether its precision numbers are a lower bound.
-6. **Interpretation choices in section 2.4:** are any of them wrong for how results will be used?
-
-## 8. What happens after the decision
-
-1. Build the chosen BirdSet mode, with tests, as one commit.
-2. Install the prerequisites and run the spec's final check: `birdeval run -m birdnet_2.4 perch_v2 -e birdset_POW_smoke`. Confirm that `presence.csv`, `detections.csv`, `fp_review.csv` and `recording_level.json` are written and make sense.
-3. Review that first real run (score distributions per model, `fp_review.csv`, coverage gaps from taxonomy mismatches) before starting Phase 5 (calibration), as the spec says.
+1. Option 1 with a fixed geometric rule (overlap > half the window, or the window's centre in the segment), or per-model values chosen another way?
+2. Should evidence correctness and recording-level unit membership follow the per-model rule?
+3. Do we keep a common-setting result alongside, for comparison with BirdSet's published protocol?
+4. After this: Phase 5 calibration next, or more sites first?
