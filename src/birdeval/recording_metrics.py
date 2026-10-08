@@ -26,6 +26,7 @@ scope exactly as at segment level (all / covered / shared).
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from sklearn.metrics import average_precision_score
 
 
@@ -77,6 +78,32 @@ def evidence_precision(T: np.ndarray, S: np.ndarray, E: np.ndarray, cols: np.nda
     frac = lambda m: float((e[m] == 1).mean()) if m.any() else float("nan")  # noqa: E731
     return {"evidence_precision": frac(known), "conditional_evidence_precision": frac(cond),
             "n_evidence_known": int(known.sum()), "n_evidence_unknown": int((claim & (e == -1)).sum())}
+
+
+def per_species(
+    T: np.ndarray, S: np.ndarray, classes: list[str], cols: np.ndarray, thresholds: dict[str, float]
+) -> pd.DataFrame:
+    """Per-species AP, and precision / recall at each *global* operating threshold.
+
+    The thresholds are pooled over all species, so this shows which species
+    a single deployed threshold serves well and which it doesn't.
+    """
+    rows = []
+    for c in cols:
+        k = T[:, c] != -1
+        y, s = T[k, c], S[k, c]
+        n_pos = int((y == 1).sum())
+        row = {"species": classes[c], "n_units": int(k.sum()), "n_present": n_pos,
+               "ap": average_precision_score(y, s) if n_pos and (y == 0).any() else float("nan")}
+        for t, thr in thresholds.items():
+            p = f"p{round(float(t) * 100)}"
+            claim = s >= thr if np.isfinite(thr) else np.zeros(len(s), bool)
+            tp = int((claim & (y == 1)).sum())
+            row |= {f"claims_at_{p}": int(claim.sum()),
+                    f"precision_at_{p}": tp / claim.sum() if claim.any() else float("nan"),
+                    f"recall_at_{p}": tp / n_pos if n_pos else float("nan")}
+        rows.append(row)
+    return pd.DataFrame(rows)
 
 
 def rec_cmap(T: np.ndarray, S: np.ndarray, cols: np.ndarray) -> tuple[float, int]:

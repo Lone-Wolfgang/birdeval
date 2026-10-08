@@ -26,6 +26,9 @@ class EvalSet:
         end    (float, s)   segment end within the file
         labels (list[str])  canonical species keys present (may be empty)
       and optionally
+        recording (str)     source recording, when files are pieces of one
+                            (BirdSet test_5s clips); used for bootstrap groups
+        site (str)          recording site; bootstrap groups take precedence
         unreviewed (list[str])  species nobody checked in this segment. They
                             are unknown (-1), not absent, unless also in
                             `labels` (a positive annotation wins).
@@ -52,6 +55,17 @@ class EvalSet:
                 raise ValueError(
                     f"EvalSet {self.name!r} has {col} outside its class list: {sorted(unknown)[:10]}"
                 )
+
+    def groups(self) -> np.ndarray:
+        """Bootstrap group per segment: site, else source recording, else file.
+
+        Resampling whole groups keeps correlated segments together (e.g. the
+        5 s clips of one BirdSet soundscape, or the chunks of one file).
+        """
+        for col in ("site", "recording"):
+            if col in self.segments:
+                return self.segments[col].to_numpy()
+        return self.segments["file"].to_numpy()
 
     @property
     def files(self) -> list[str]:

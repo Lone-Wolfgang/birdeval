@@ -65,7 +65,7 @@ def run(toy, tmp_path):
     m = FakeModel("noisy", tax, SPECIES, noise=0.7, seed=4)
     m.oracle = ev
     cfg = {"output_dir": str(tmp_path / "res"), "cache_dir": str(tmp_path / "cache"), "bootstrap": 0,
-           "recording_level": {"precision_targets": [0.5], "fp_review_n": 5}}
+           "recording_level": {"precision_targets": [0.5], "operating_target": 0.5, "fp_review_n": 5}}
     evaluate(cfg, [], [ev], run_name="e", models={"noisy": m})
     return tmp_path / "res" / "e" / "toy" / "noisy"
 

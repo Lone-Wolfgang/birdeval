@@ -94,7 +94,8 @@ REC_DEFAULTS = {
     "unit_s": None,
     "duration_bins_s": [60, 300, 900, 3600],
     "tau": 0.0,
-    "precision_targets": [0.9],
+    "precision_targets": [0.8, 0.9, 0.95],
+    "operating_target": 0.9,  # which target's threshold detections.csv uses
     "min_overlap_s": None,  # None = alignment.min_overlap_s
     "fp_review_n": 200,
 }
@@ -104,9 +105,12 @@ def recording_level(ev, y, units, T, windows, scopes, rec, align_cfg, method, n_
     """Write recording_level.json, presence.csv, detections.csv and fp_review.csv
     for one model; return headline columns per scope for summary.csv.
 
-    The operating threshold for detections.csv is the one meeting the first
-    precision target on the `all` scope.
+    The operating threshold for detections.csv is the one meeting
+    `operating_target` on the `all` scope.
     """
+    if rec["operating_target"] not in rec["precision_targets"]:
+        raise ValueError(f"recording_level.operating_target {rec['operating_target']} "
+                         f"is not one of precision_targets {rec['precision_targets']}")
     min_ov = rec["min_overlap_s"] if rec["min_overlap_s"] is not None else align_cfg.get("min_overlap_s", 1.0)
     us = aggregate(ev, windows, units, tau=rec["tau"], min_overlap_s=min_ov, floor=scoring.floor(method))
     E = evidence_truth(ev, y, us, min_overlap_s=min_ov)
@@ -117,6 +121,11 @@ def recording_level(ev, y, units, T, windows, scopes, rec, align_cfg, method, n_
             targets=rec["precision_targets"], duration_bins_s=rec["duration_bins_s"], n_boot=n_boot, E=E,
         )
         out[scope] = r
+        thresholds = {t: tr["threshold"] for t, tr in r["targets"].items()}
+        cols = np.arange(len(ev.classes)) if mask is None else np.flatnonzero(mask)
+        recording_metrics.per_species(T, us.max_score, ev.classes, cols, thresholds).to_csv(
+            d / f"per_species_recording_{scope}.csv", index=False
+        )
         h = {"rec_cmAP": r["cmAP"]}
         for t, tr in r["targets"].items():
             p = f"p{round(float(t) * 100)}"
@@ -124,7 +133,7 @@ def recording_level(ev, y, units, T, windows, scopes, rec, align_cfg, method, n_
                   f"rec_list_precision_at_{p}": tr["list_precision"],
                   f"rec_evidence_precision_at_{p}": tr["evidence_precision"]}
         headline[scope] = h
-    op = out["all"]["targets"][str(rec["precision_targets"][0])]
+    op = out["all"]["targets"][str(rec["operating_target"])]
     if not op["reached"]:
         log.warning("%s: %s; detections.csv is empty", d.name, op["note"])
     pres = presence_table(us, T, evidence=E)
@@ -155,7 +164,7 @@ def evaluate(
     for e in evalset_names:
         ev = build_evalset(e, cfg["evalsets"][e], tax) if isinstance(e, str) else e
         y = ev.target_matrix()
-        groups = ev.segments["file"].to_numpy()
+        groups = ev.groups()
         log.info("Eval set %s: %d segments, %d files, %d classes", ev.name, len(y), len(ev.files), len(ev.classes))
 
         aligned, covered, windows = {}, {}, {}

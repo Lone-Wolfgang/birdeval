@@ -43,14 +43,18 @@ class UnitScores:
 
 
 def make_units(ev: EvalSet, unit_s: float | None = None) -> tuple[pd.DataFrame, np.ndarray]:
-    """Return (units table, unit index of every segment)."""
+    """Return (units table, unit index of every segment).
+
+    Each unit's bootstrap `group` is its first segment's EvalSet.groups()
+    value, so chunks (unit_s) of one recording are always resampled together.
+    """
     seg = ev.segments
-    group_col = "site" if "site" in seg else "file"
+    seg_group = ev.groups()
     mid = (seg["start"].to_numpy() + seg["end"].to_numpy()) / 2
     rows, seg_unit = [], np.empty(len(seg), dtype=int)
     for file, g in seg.groupby("file", sort=True):
         lo, hi = float(g["start"].min()), float(g["end"].max())
-        group = g[group_col].iloc[0]
+        group = seg_group[g.index[0]]
         if unit_s is None:
             seg_unit[g.index] = len(rows)
             rows.append((file, lo, hi, group))

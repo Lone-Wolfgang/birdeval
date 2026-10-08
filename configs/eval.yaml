@@ -27,7 +27,8 @@ recording_level:
   unit_s: null                  # null = whole file; or e.g. 60, 300 to match deployment length
   duration_bins_s: [60, 300, 900, 3600]
   tau: 0.0                      # n_above threshold, on the scorer's scale (0.0 logit = p 0.5)
-  precision_targets: [0.9]
+  precision_targets: [0.8, 0.9, 0.95]
+  operating_target: 0.9         # its threshold defines the claims in detections.csv
   min_overlap_s: null           # window-in-unit overlap; null = alignment.min_overlap_s
   fp_review_n: 200              # top-scoring wrong claims exported for expert listening
 
@@ -54,7 +55,8 @@ models:
     overlap_s: 2.5       # 5 s windows, 2.5 s hop
 
 evalsets:
-  # BirdSet test soundscapes, 5 s segments. max_files is handy for a smoke test.
+  # BirdSet test_5s as published: separate 5 s clip files (BirdSet's protocol).
+  # Comparable to BirdSet papers; recording-level results here are per clip.
   birdset_HSN: {loader: birdset, config: HSN, split: test_5s}
   birdset_NBP: {loader: birdset, config: NBP, split: test_5s}
   birdset_NES: {loader: birdset, config: NES, split: test_5s}
@@ -64,6 +66,19 @@ evalsets:
   birdset_SSW: {loader: birdset, config: SSW, split: test_5s}
   birdset_UHH: {loader: birdset, config: UHH, split: test_5s}
   birdset_POW_smoke: {loader: birdset, config: POW, split: test_5s, max_files: 3}
+
+  # BirdSet soundscapes: models run on the full recordings, labelled with the
+  # official test_5s labels at each clip's offset. Time no clip covers is not
+  # reviewed. Use these for recording-level results.
+  birdset_HSN_scape: {loader: birdset_soundscape, config: HSN}
+  birdset_NBP_scape: {loader: birdset_soundscape, config: NBP}
+  birdset_NES_scape: {loader: birdset_soundscape, config: NES}
+  birdset_PER_scape: {loader: birdset_soundscape, config: PER}
+  birdset_POW_scape: {loader: birdset_soundscape, config: POW}
+  birdset_SNE_scape: {loader: birdset_soundscape, config: SNE}
+  birdset_SSW_scape: {loader: birdset_soundscape, config: SSW}
+  birdset_UHH_scape: {loader: birdset_soundscape, config: UHH}
+  birdset_POW_scape_smoke: {loader: birdset_soundscape, config: POW, max_files: 3}
 
   # Your own strongly labelled data, when you're ready:
   # mine:

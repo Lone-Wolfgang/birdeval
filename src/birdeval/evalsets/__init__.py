@@ -7,6 +7,7 @@ from ..taxonomy import Taxonomy
 
 LOADERS = {
     "birdset": "birdeval.evalsets.birdset:load_birdset",
+    "birdset_soundscape": "birdeval.evalsets.birdset:load_birdset_soundscapes",
     "strong_labels": "birdeval.evalsets.strong_labels:load_strong_labels",
     "segments_csv": "birdeval.evalsets.strong_labels:load_segments_csv",
 }
