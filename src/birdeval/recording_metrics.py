@@ -59,14 +59,19 @@ def list_precision(truth: np.ndarray, score: np.ndarray, unit: np.ndarray, thres
     tp = (truth == 1) & claim
     n_pos = int((truth == 1).sum())
     micro = float(tp.sum() / claim.sum()) if claim.any() else float("nan")
-    units = np.unique(unit[claim])
-    per_unit = [tp[unit == u].sum() / claim[unit == u].sum() for u in units]
+    # per-unit counts in one pass (a loop over units is quadratic, and this
+    # runs inside every bootstrap resample)
+    _, idx = np.unique(unit, return_inverse=True)
+    n_claim = np.bincount(idx, weights=claim)
+    n_tp = np.bincount(idx, weights=tp)
+    has = n_claim > 0
+    per_unit = n_tp[has] / n_claim[has]
     return {
         "list_precision": micro,
-        "list_precision_unit_mean": float(np.mean(per_unit)) if per_unit else float("nan"),
+        "list_precision_unit_mean": float(per_unit.mean()) if has.any() else float("nan"),
         "recall": float(tp.sum() / n_pos) if n_pos else float("nan"),
         "n_claims": int(claim.sum()),
-        "n_units_with_claims": int(len(units)),
+        "n_units_with_claims": int(has.sum()),
     }
 
 
