@@ -86,8 +86,14 @@ ModelAdapter ──> raw logits ──> cache (.npz) ──> scorer ────
   unclipped `sigmoid`, applied to cached logits. Ranking metrics are identical
   for both. Softmax is deliberately not offered: in soundscapes several
   species call at once, and softmax makes them compete.
-- **Alignment** (`align.py`): a segment's score per class is the max over model
-  windows overlapping it by ≥ `min_overlap_s`. Same rule for every model.
+- **Alignment** (`align.py`): a segment's score per class is the max over the
+  model windows that count towards it. A window counts if more than half of
+  it lies inside (`alignment.rule: half_window`), measured on its own length.
+  It's one geometric rule for every model, with nothing to tune, and no
+  window counts towards two segments. Recording-level units use the same
+  rule. The old global `min_overlap_s` let Perch's 5 s windows score calls
+  in the neighbouring segment (POW soundscapes: cmAP 0.471 vs 0.567 on
+  clips), and no single threshold suited both 3 s and 5 s windows.
 - **Metrics** (`metrics.py`): cmAP, AUROC, top-1 (BirdSet's set), plus a
   bootstrap CI on cmAP that resamples whole groups (site, else source
   recording, else file). Segments within a recording are correlated, so
@@ -132,7 +138,10 @@ alongside the segment metrics, every run reports two recording-level layers
     source recordings. Chunks of one recording (`unit_s`) and BirdSet clips
     of one soundscape always move together.
 - **Evidence:** the claim's evidence clip is its max-scoring window.
-  *Evidence precision* is how often that clip contains the species.
+  *Evidence precision* is how often that clip contains the species. It is
+  checked against the annotated calls when the eval set has them (BirdSet,
+  `strong_labels`): the clip must overlap a call of that species by ≥ 0.5 s.
+  Being in a labelled 5 s segment isn't enough.
   *Conditional evidence precision* counts only claims that are right at the
   unit level, which separates "wrong species" from "right species, wrong clip".
 
@@ -152,6 +161,13 @@ before. BirdSet is exhaustively annotated, so it always uses the defaults.
 
 > Results on our own data assume exhaustive labelling. If labelling was not
 > exhaustive, precision is a lower bound.
+
+### Watching a run
+
+In a terminal, each model × eval set shows a progress bar (files done, rate,
+ETA). With output redirected to a file, the same information is logged every
+10%. Inference is cached file by file, so an interrupted run resumes where it
+stopped: just run the same command again.
 
 ## Outputs
 
@@ -190,12 +206,11 @@ the `all` scope. It is empty, with a warning, if no threshold reaches it.
   soundscape lookup hold for all 8 sites' metadata. Uncovered soundscape
   time has only been measured at POW, where there is none. BirdSet uses a HF
   loading script, hence `datasets<4`.
-- **Unreviewed time makes absent species unknown for the whole unit.** This
-  follows the three-state rule. If a site's soundscapes have short
-  unreviewed tails (e.g. dropped partial clips), every absent species in
-  those recordings drops out of the recording-level metrics. Check
-  `uncovered_s` in the eval set metadata before trusting a site's
-  recording-level numbers.
+- **Units are trimmed to reviewed time.** Unreviewed stretches (e.g. soundscape
+  audio no labelled clip covers) are left out of a recording's unit rather
+  than making every absent species unknown. A presence claim is about the
+  reviewed part of the recording. `recording_level.json` records how much
+  was trimmed.
 - **The `birdnet` adapter runs with real weights** (birdnet 1.1.1, TF 2.21,
   onnxruntime 1.30, Apple Silicon). All three models put *Turdus merula* first
   on a blackbird recording. This covers loading and inference, not BirdSet
@@ -213,10 +228,8 @@ the `all` scope. It is empty, with a warning, if no threshold reaches it.
   it will in deployment.
 - **BirdNET 3.0 is a developer preview.** Labels and scores will change between
   releases; the package version is recorded in every `summary.json`.
-- **Window overlap matters.** With max-pooling, overlapping windows near a
-  segment boundary can carry a call into the neighbouring segment (the test
-  suite hit this). Each model's `overlap_s` and the global `min_overlap_s`
-  together set how much; keep them fixed across models you compare, and
-  consider a small sweep once things run.
+- **Segment-level results depend on the alignment rule.** The half-window rule
+  replaced a global overlap threshold on 2026-10-08. Earlier segment-level
+  numbers aren't comparable; recording-level numbers barely moved.
 - No geo-model (location/week) filtering yet. BirdSet soundscapes have
   locations, so this is a natural next experiment.
