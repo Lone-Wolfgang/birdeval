@@ -37,7 +37,7 @@ class FakeModel(ModelAdapter):
     def to_canonical(self, label: str) -> str | None:
         return self.taxonomy.from_sci(label)
 
-    def predict_files(self, files, vocab):
+    def predict_files(self, files, vocab, on_result=None):
         rng = np.random.default_rng(self.seed)
         cls = [c for c in map(self.to_canonical, self._classes) if c in vocab]
         out = {}
@@ -54,4 +54,6 @@ class FakeModel(ModelAdapter):
                         if l in cls:
                             s[hit, cls.index(l)] += 1.0 - self.noise
             out[f] = WindowScores(f, starts, ends, np.clip(s, 0, 1), cls)
+            if on_result is not None:
+                on_result(out[f])
         return out

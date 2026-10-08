@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 
 from ..data import WindowScores
 from ..taxonomy import Taxonomy
@@ -29,8 +30,19 @@ class ModelAdapter(ABC):
     def to_canonical(self, label: str) -> str | None: ...
 
     @abstractmethod
-    def predict_files(self, files: list[str], vocab: set[str]) -> dict[str, WindowScores]:
-        """Score `files`, returning window-level scores for classes in `vocab` only."""
+    def predict_files(
+        self,
+        files: list[str],
+        vocab: set[str],
+        on_result: Callable[[WindowScores], None] | None = None,
+    ) -> dict[str, WindowScores]:
+        """Score `files`, returning window-level scores for classes in `vocab` only.
+
+        If the adapter can, it calls `on_result` with each file's scores as
+        soon as that file is done (possibly from another thread), so an
+        interrupted run keeps the files it finished. Adapters that don't are
+        still cached, but only once the whole call returns.
+        """
 
     def version_info(self) -> dict:
         """Anything that changes outputs. Goes into the cache key and the run record."""

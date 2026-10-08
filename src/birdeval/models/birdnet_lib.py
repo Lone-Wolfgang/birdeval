@@ -24,6 +24,7 @@ scorer stage (scoring.py) turns them into whatever the run asks for:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -100,7 +101,12 @@ class BirdNETLibModel(ModelAdapter):
         return self.taxonomy.from_birdnet(label)
 
     # -- inference -------------------------------------------------------------
-    def predict_files(self, files: list[str], vocab: set[str]) -> dict[str, WindowScores]:
+    def predict_files(
+        self,
+        files: list[str],
+        vocab: set[str],
+        on_result: Callable[[WindowScores], None] | None = None,
+    ) -> dict[str, WindowScores]:
         native = [l for l in self.labels() if self.to_canonical(l) in vocab]
         if not native:
             log.warning("%s covers none of the eval classes", self.name)
@@ -123,21 +129,34 @@ class BirdNETLibModel(ModelAdapter):
         )
         if self.version == "3.0" and self.segment_size_s:
             kwargs["segment_size_s"] = self.segment_size_s
+        if on_result is not None:
+            # birdnet calls this from its dispatcher thread with a one-file
+            # result shaped like the batch result; an exception here cancels
+            # the analysis rather than silently losing cache writes.
+            def _file_done(res) -> None:
+                for ws in self._convert(res, native, canon).values():
+                    on_result(ws)
+
+            kwargs["on_file_complete"] = _file_done
 
         out: dict[str, WindowScores] = {}
         for i in range(0, len(files), self.files_per_call):
             chunk = files[i : i + self.files_per_call]
             res = self.model.predict(chunk, **kwargs)
-            dense = _densify(res, native, canon)
-            if self.params["score_space"] == "logit_from_prob":
-                for ws in dense.values():
-                    ws.scores = prob_to_logit(ws.scores)
-            out.update(dense)
+            out.update(self._convert(res, native, canon))
         missing = set(files) - set(out)
         for f in missing:  # unreadable / too-short files
             log.warning("%s produced no output for %s", self.name, f)
             out[f] = _empty(f, canon)
         return out
+
+    def _convert(self, res, native: list[str], canon: list[str]) -> dict[str, WindowScores]:
+        """birdnet result (batch or one-file) -> dense logit WindowScores per file."""
+        dense = _densify(res, native, canon)
+        if self.params["score_space"] == "logit_from_prob":
+            for ws in dense.values():
+                ws.scores = prob_to_logit(ws.scores)
+        return dense
 
 
 def prob_to_logit(p: np.ndarray, eps: float = 1e-7) -> np.ndarray:

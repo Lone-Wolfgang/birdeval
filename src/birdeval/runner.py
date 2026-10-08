@@ -81,8 +81,12 @@ def get_window_scores(
     if todo:
         log.info("%s on %s: running inference on %d/%d files", model.name, ev.name, len(todo), len(ev.files))
         t0 = time.time()
-        for ws in model.predict_files(todo, set(ev.classes)).values():
-            cache.put(ws)
+        # each file is cached as soon as it's scored, so a crash keeps them;
+        # anything the adapter didn't stream is cached once the call returns
+        out = model.predict_files(todo, set(ev.classes), on_result=cache.put)
+        for f, ws in out.items():
+            if not cache.has(f):
+                cache.put(ws)
         log.info("  done in %.1fs", time.time() - t0)
     else:
         log.info("%s on %s: all %d files cached", model.name, ev.name, len(ev.files))
