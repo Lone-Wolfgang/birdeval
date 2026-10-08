@@ -22,16 +22,42 @@ about 6 min the first time), runs each model on a generated 12 s clip and a
 Any `--audio` clips get a top-3 species list. A model that fails is reported
 without stopping the rest, and the exit code is nonzero.
 
-Then put an eBird/Clements taxonomy CSV at `configs/taxonomy/ebird_taxonomy.csv`
-(needs `SPECIES_CODE` and `SCI_NAME` columns). BirdSet labels are eBird codes,
-so this is required.
+Then put an eBird taxonomy CSV at `configs/taxonomy/ebird_taxonomy.csv`
+(needs `SPECIES_CODE` and `SCI_NAME`/`SCIENTIFIC_NAME` columns). BirdSet labels
+are eBird codes, so this is required. The eBird API serves it without a key:
 
-**First real run:** use the smoke set to shake out data-loading issues before
+```bash
+curl -s "https://api.ebird.org/v2/ref/taxonomy/ebird?fmt=csv" -o configs/taxonomy/ebird_taxonomy.csv
+```
+
+**First real run:** use a smoke set to shake out data-loading issues before
 committing hours of inference:
 
 ```bash
-birdeval run -m birdnet_2.4 -e birdset_POW_smoke
+birdeval run -m birdnet_2.4 -e birdset_POW_scape_smoke   # 3 soundscapes
 ```
+
+### BirdSet: clips or soundscapes
+
+BirdSet's `test_5s` split is not 5 s slices of longer recordings. Every row
+is a separate, pre-cut 5 s audio file. So there are two modes, both scored on
+BirdSet's official 5 s labels:
+
+| eval set | audio the model hears | use for |
+|---|---|---|
+| `birdset_<SITE>` | the published 5 s clips | comparing with BirdSet papers |
+| `birdset_<SITE>_scape` | the full soundscapes; each clip's labels sit at its offset | recording-level results; matches deployment |
+
+In soundscape mode, any time no clip covers is not reviewed. Both modes
+download only BirdSet's test material.
+
+`scripts/birdset_labels.py` reports label density per site and cross-checks
+the soundscape labels against labels rebuilt from BirdSet's call-level
+annotations, using metadata only. The cross-check gives exact segment
+agreement of 96–100% at seven sites (100% at POW). **NBP is not a
+soundscape set:** its 539 "recordings" are about 5 s each, and only 52% of
+segments agree. Recording lengths differ by site: POW 300 s, HSN 600 s,
+UHH 60–540 s, NES/PER/SNE/SSW 1 h.
 
 ## How it works
 
@@ -63,8 +89,9 @@ ModelAdapter ──> raw logits ──> cache (.npz) ──> scorer ────
 - **Alignment** (`align.py`): a segment's score per class is the max over model
   windows overlapping it by ≥ `min_overlap_s`. Same rule for every model.
 - **Metrics** (`metrics.py`): cmAP, AUROC, top-1 (BirdSet's set), plus a
-  file-level bootstrap CI on cmAP (segments within a file are correlated, so
-  resampling segments would give CIs that are too narrow).
+  bootstrap CI on cmAP that resamples whole groups (site, else source
+  recording, else file). Segments within a recording are correlated, so
+  resampling segments would give CIs that are too narrow.
 
 ### Three class scopes, on purpose
 
@@ -92,14 +119,18 @@ alongside the segment metrics, every run reports two recording-level layers
   `unit_s`-long chunks to match a deployment's recording length. The pair
   is present if any segment in the unit is.
   - *rec cmAP*: per-species AP across units.
-  - *Recall at precision ≥ target* (default 0.9): the lowest threshold whose
+  - *Recall at precision ≥ target* (defaults 0.8 / 0.9 / 0.95): the lowest threshold whose
     pooled precision meets the target, and the recall it gets.
   - *List precision*: at that threshold, the fraction of claimed species that
     are really there. Pooled, and averaged per unit.
   - *By duration*: the same, per duration bin, at the global threshold. With
     max-pooling, longer recordings give absent species more chances at one
     high window.
-  - Bootstrap CIs resample sites (if the eval set has a `site` column) or files.
+  - *Per species*, at each pooled global threshold: precision and recall,
+    showing which species a single deployed threshold serves badly.
+  - Bootstrap CIs resample sites (if the eval set has a `site` column), else
+    source recordings. Chunks of one recording (`unit_s`) and BirdSet clips
+    of one soundscape always move together.
 - **Evidence:** the claim's evidence clip is its max-scoring window.
   *Evidence precision* is how often that clip contains the species.
   *Conditional evidence precision* counts only claims that are right at the
@@ -134,9 +165,11 @@ results/<run>/<evalset>/<model>/presence.csv          unit, species, presence_co
 results/<run>/<evalset>/<model>/detections.csv        file, start, end, species, confidence, unit,
                                                       presence_correct, evidence_correct
 results/<run>/<evalset>/<model>/fp_review.csv         top wrong claims to listen to, by score
+results/<run>/<evalset>/<model>/per_species_recording_<scope>.csv  per-species AP, precision / recall
+                                                      at each global threshold
 ```
 
-`detections.csv` uses the threshold that meets the first precision target on
+`detections.csv` uses the threshold that meets `operating_target` (0.9) on
 the `all` scope. It is empty, with a warning, if no threshold reaches it.
 
 ## Adding things
@@ -153,10 +186,16 @@ the `all` scope. It is empty, with a warning, if no threshold reaches it.
 
 ## Known gaps / things to verify
 
-- **BirdSet loader is untested against the live dataset.** Column names and
-  the `filepath` behaviour are from BirdSet's documented layout; check
-  `_COLS` in `evalsets/birdset.py` on the first run. BirdSet uses a HF loading
-  script, hence `datasets<4`.
+- **BirdSet loaders are checked live on POW only.** Clip-name parsing and
+  soundscape lookup hold for all 8 sites' metadata. Uncovered soundscape
+  time has only been measured at POW, where there is none. BirdSet uses a HF
+  loading script, hence `datasets<4`.
+- **Unreviewed time makes absent species unknown for the whole unit.** This
+  follows the three-state rule. If a site's soundscapes have short
+  unreviewed tails (e.g. dropped partial clips), every absent species in
+  those recordings drops out of the recording-level metrics. Check
+  `uncovered_s` in the eval set metadata before trusting a site's
+  recording-level numbers.
 - **The `birdnet` adapter runs with real weights** (birdnet 1.1.1, TF 2.21,
   onnxruntime 1.30, Apple Silicon). All three models put *Turdus merula* first
   on a blackbird recording. This covers loading and inference, not BirdSet
