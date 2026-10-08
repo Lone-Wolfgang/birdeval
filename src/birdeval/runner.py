@@ -43,6 +43,7 @@ from .data import EvalSet
 from .evalsets import build_evalset
 from .models import build_model
 from .models.base import ModelAdapter
+from .progress import Progress
 from .taxonomy import Taxonomy
 
 log = logging.getLogger("birdeval")
@@ -79,14 +80,26 @@ def get_window_scores(
     cache = PredictionCache(cache_root, model.cache_key(), ev.name, ev.classes)
     todo = cache.missing(ev.files)
     if todo:
-        log.info("%s on %s: running inference on %d/%d files", model.name, ev.name, len(todo), len(ev.files))
+        done = len(ev.files) - len(todo)
+        log.info("%s on %s: running inference on %d/%d files%s", model.name, ev.name, len(todo), len(ev.files),
+                 f" (resuming: {done} already cached)" if done else "")
         t0 = time.time()
-        # each file is cached as soon as it's scored, so a crash keeps them;
-        # anything the adapter didn't stream is cached once the call returns
-        out = model.predict_files(todo, set(ev.classes), on_result=cache.put)
-        for f, ws in out.items():
-            if not cache.has(f):
-                cache.put(ws)
+        progress = Progress(len(todo), f"{model.name} on {ev.name}")
+
+        def on_result(ws):
+            # each file is cached as soon as it's scored, so a crash keeps it
+            cache.put(ws)
+            progress.update()
+
+        try:
+            out = model.predict_files(todo, set(ev.classes), on_result=on_result)
+            # adapters that don't stream are cached (and counted) once the call returns
+            for f, ws in out.items():
+                if not cache.has(f):
+                    cache.put(ws)
+                    progress.update()
+        finally:
+            progress.close()
         log.info("  done in %.1fs", time.time() - t0)
     else:
         log.info("%s on %s: all %d files cached", model.name, ev.name, len(ev.files))
@@ -251,7 +264,10 @@ def main(argv: list[str] | None = None) -> None:
         results = run_check(cfg, a.models, a.audio)
         print(format_report(results))
         raise SystemExit(0 if all(r.ok for r in results) else 1)
-    table = evaluate(cfg, a.models, a.evalsets, a.run_name)
+    from tqdm.contrib.logging import logging_redirect_tqdm
+
+    with logging_redirect_tqdm():  # keep log lines from breaking the progress bars
+        table = evaluate(cfg, a.models, a.evalsets, a.run_name)
     with pd.option_context("display.width", 140, "display.max_columns", 20):
         print(table[table["classes"] == "shared"].drop(columns="classes").round(3).to_string(index=False))
 
