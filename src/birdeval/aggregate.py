@@ -12,7 +12,8 @@ A segment belongs to the unit containing its midpoint.
 
 Features come from the scored model windows, not the aligned segment matrix,
 so the evidence times are the model's real windows. A window belongs to a unit
-if it overlaps it by >= min_overlap_s (or covers all of a shorter unit).
+under the same rule as segment alignment (align.window_hits; by default more
+than half of the window lies inside the unit).
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .align import window_hits
 from .data import EvalSet, WindowScores
 
 FEATURES = ("max_score", "top3_mean", "n_above")
@@ -86,6 +88,7 @@ def aggregate(
     windows: dict[str, WindowScores],
     units: pd.DataFrame,
     tau: float = 0.0,
+    rule: str = "half_window",
     min_overlap_s: float = 1.0,
     floor: float = 0.0,
 ) -> UnitScores:
@@ -107,8 +110,7 @@ def aggregate(
         covered[ecols] = True
         if not mcols or len(ws.starts) == 0:
             continue
-        overlap = np.minimum(ws.ends, e) - np.maximum(ws.starts, s)
-        inside = np.flatnonzero((overlap > 0) & (overlap >= min(min_overlap_s, e - s)))
+        inside = np.flatnonzero(window_hits(ws.starts, ws.ends, [(s, e)], rule, min_overlap_s))
         n_win[u] = len(inside)
         if not len(inside):
             continue
@@ -125,12 +127,14 @@ def aggregate(
     return UnitScores(units, list(classes), covered, mx, t3, n_above, ev_s, ev_e)
 
 
-def evidence_truth(ev: EvalSet, y: np.ndarray, us: UnitScores, min_overlap_s: float = 1.0) -> np.ndarray:
+def evidence_truth(
+    ev: EvalSet, y: np.ndarray, us: UnitScores, rule: str = "half_window", min_overlap_s: float = 1.0
+) -> np.ndarray:
     """[n_units, n_classes] int8: does the evidence window contain the species?
 
-    1 if it overlaps a segment labelled present for that species by
-    >= min_overlap_s (or all of a shorter window); else -1 if any overlapping
-    segment is unreviewed for it, or it overlaps no labelled time; else 0.
+    1 if the window counts towards (align.window_hits) a segment labelled
+    present for that species; else -1 if any segment it counts towards is
+    unreviewed for it, or it counts towards no labelled time; else 0.
     """
     E = np.full(us.max_score.shape, -1, np.int8)
     seg = ev.segments
@@ -143,8 +147,14 @@ def evidence_truth(ev: EvalSet, y: np.ndarray, us: UnitScores, min_overlap_s: fl
         if not ok.any():
             continue
         c = np.flatnonzero(ok)
-        ov = np.minimum(ee[c, None], s1[rows]) - np.maximum(es[c, None], s0[rows])  # [c, n_seg]
-        hit = (ov > 0) & (ov >= np.minimum(min_overlap_s, ee[c] - es[c])[:, None])
+        ov = np.clip(np.minimum(ee[c, None], s1[rows]) - np.maximum(es[c, None], s0[rows]), 0, None)  # [c, n_seg]
+        if rule == "half_window":
+            hit = ov > ((ee[c] - es[c]) / 2)[:, None]
+        else:
+            hit = (ov >= min_overlap_s) & (ov > 0)
+        # same fallback as window_hits: the best-overlapping segment
+        best = (ov == ov.max(axis=1, keepdims=True)) & (ov > 0)
+        hit = np.where(hit.any(axis=1, keepdims=True), hit, best)
         lab = y[rows][:, c].T  # [c, n_seg]
         pos = (hit & (lab == 1)).any(axis=1)
         unk = (hit & (lab == -1)).any(axis=1) | ~hit.any(axis=1)

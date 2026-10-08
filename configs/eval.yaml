@@ -15,8 +15,12 @@ scoring:
   method: logit        # logit | sigmoid
 
 alignment:
-  # A segment's score = max over model windows overlapping it by >= this many seconds.
-  min_overlap_s: 1.0
+  # A segment's score = max over the model windows that count towards it.
+  # half_window: more than half of the window lies inside (strict >), on each
+  # window's own length; one rule for every model, also used for recording
+  # units. min_overlap: the old rule, overlap >= min_overlap_s.
+  rule: half_window
+  min_overlap_s: 1.0   # only used by rule: min_overlap
   # Score for classes a model can't predict / segments no window covers.
   # Default (null): the scorer's floor, which ranks below every real score.
   missing_value: null
@@ -29,7 +33,6 @@ recording_level:
   tau: 0.0                      # n_above threshold, on the scorer's scale (0.0 logit = p 0.5)
   precision_targets: [0.8, 0.9, 0.95]
   operating_target: 0.9         # its threshold defines the claims in detections.csv
-  min_overlap_s: null           # window-in-unit overlap; null = alignment.min_overlap_s
   fp_review_n: 200              # top-scoring wrong claims exported for expert listening
 
 cache_dir: cache

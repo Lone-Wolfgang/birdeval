@@ -61,7 +61,7 @@ def load_config(path: str) -> dict:
 
 def alignment_config(cfg: dict, method: str) -> dict:
     """Alignment settings, with missing_value defaulting to the scorer's floor."""
-    a = dict(cfg.get("alignment", {}))
+    a = {"rule": "half_window", "min_overlap_s": 1.0, **cfg.get("alignment", {})}
     if a.get("missing_value") is None:
         a["missing_value"] = scoring.floor(method)
     elif method == "logit":
@@ -100,7 +100,6 @@ REC_DEFAULTS = {
     "tau": 0.0,
     "precision_targets": [0.8, 0.9, 0.95],
     "operating_target": 0.9,  # which target's threshold detections.csv uses
-    "min_overlap_s": None,  # None = alignment.min_overlap_s
     "fp_review_n": 200,
 }
 
@@ -115,9 +114,9 @@ def recording_level(ev, y, units, T, windows, scopes, rec, align_cfg, method, n_
     if rec["operating_target"] not in rec["precision_targets"]:
         raise ValueError(f"recording_level.operating_target {rec['operating_target']} "
                          f"is not one of precision_targets {rec['precision_targets']}")
-    min_ov = rec["min_overlap_s"] if rec["min_overlap_s"] is not None else align_cfg.get("min_overlap_s", 1.0)
-    us = aggregate(ev, windows, units, tau=rec["tau"], min_overlap_s=min_ov, floor=scoring.floor(method))
-    E = evidence_truth(ev, y, us, min_overlap_s=min_ov)
+    rule = {"rule": align_cfg["rule"], "min_overlap_s": align_cfg["min_overlap_s"]}  # same rule as segments
+    us = aggregate(ev, windows, units, tau=rec["tau"], floor=scoring.floor(method), **rule)
+    E = evidence_truth(ev, y, us, **rule)
     out, headline = {"units": {"unit_s": rec["unit_s"], "n_units": len(units)}, "config": rec}, {}
     for scope, mask in scopes:
         r = recording_metrics.compute(

@@ -35,11 +35,16 @@ def test_align_max_pools_overlapping_windows(toy):
         f, np.array([0.0, 4.0]), np.array([3.0, 7.0]),
         np.array([[0.2], [0.9]], np.float32), ["turdus merula"],
     )
-    s, covered = align(ev, {f: ws} | {g: WindowScores(g, np.zeros(0), np.zeros(0), np.zeros((0, 0)), []) for g in ev.files[1:]})
+    windows = {f: ws} | {g: WindowScores(g, np.zeros(0), np.zeros(0), np.zeros((0, 0)), []) for g in ev.files[1:]}
     col = ev.classes.index("turdus merula")
-    first = ev.segments.index[(ev.segments.file == f) & (ev.segments.start == 0)][0]
-    assert s[first, col] == pytest.approx(0.9)  # [0,5] overlaps [4,7] by 1 s -> included
+    first, second = ev.segments.index[(ev.segments.file == f) & (ev.segments.start < 10)][:2]
+    # half_window: [4,7] has 2 of its 3 s in [5,10], so it counts there only
+    s, covered = align(ev, windows)
+    assert s[first, col] == pytest.approx(0.2) and s[second, col] == pytest.approx(0.9)
     assert covered[col]
+    # old rule: [0,5] overlaps [4,7] by 1 s -> included in both segments
+    s, _ = align(ev, windows, rule="min_overlap", min_overlap_s=1.0)
+    assert s[first, col] == pytest.approx(0.9) and s[second, col] == pytest.approx(0.9)
 
 
 def test_perfect_model_scores_one(toy, tmp_path):
