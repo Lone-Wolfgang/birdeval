@@ -21,6 +21,15 @@ alignment:
   # Default (null): the scorer's floor, which ranks below every real score.
   missing_value: null
 
+# Recording-level presence: "is species X in recording R?" (precision first).
+recording_level:
+  enabled: true
+  unit_s: null                  # null = whole file; or e.g. 60, 300 to match deployment length
+  duration_bins_s: [60, 300, 900, 3600]
+  tau: 0.0                      # n_above threshold, on the scorer's scale (0.0 logit = p 0.5)
+  precision_targets: [0.9]
+  min_overlap_s: null           # window-in-unit overlap; null = alignment.min_overlap_s
+
 cache_dir: cache
 output_dir: results
 bootstrap: 200   # file-level bootstrap resamples for the cmAP CI (0 to skip)

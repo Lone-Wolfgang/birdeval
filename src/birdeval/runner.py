@@ -27,7 +27,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from . import metrics, scoring
+from . import metrics, recording_metrics, scoring
+from .aggregate import aggregate, make_units, presence_table, unit_truth
 from .align import align
 from .cache import PredictionCache
 from .data import EvalSet
@@ -80,6 +81,39 @@ def get_window_scores(
     return {f: scoring.apply(cache.get(f), method) for f in ev.files}
 
 
+REC_DEFAULTS = {
+    "enabled": True,
+    "unit_s": None,
+    "duration_bins_s": [60, 300, 900, 3600],
+    "tau": 0.0,
+    "precision_targets": [0.9],
+    "min_overlap_s": None,  # None = alignment.min_overlap_s
+}
+
+
+def recording_level(ev, units, T, windows, scopes, rec, align_cfg, method, n_boot, d) -> dict:
+    """Write recording_level.json + presence.csv for one model; return headline
+    columns per scope for summary.csv."""
+    min_ov = rec["min_overlap_s"] if rec["min_overlap_s"] is not None else align_cfg.get("min_overlap_s", 1.0)
+    us = aggregate(ev, windows, units, tau=rec["tau"], min_overlap_s=min_ov, floor=scoring.floor(method))
+    out, headline = {"units": {"unit_s": rec["unit_s"], "n_units": len(units)}, "config": rec}, {}
+    for scope, mask in scopes:
+        r = recording_metrics.compute(
+            T, us.max_score, units["duration_s"].to_numpy(), units["group"].to_numpy(), restrict=mask,
+            targets=rec["precision_targets"], duration_bins_s=rec["duration_bins_s"], n_boot=n_boot,
+        )
+        out[scope] = r
+        h = {"rec_cmAP": r["cmAP"]}
+        for t, tr in r["targets"].items():
+            p = f"p{round(float(t) * 100)}"
+            h |= {f"rec_recall_at_{p}": tr["recall"], f"rec_threshold_at_{p}": tr["threshold"],
+                  f"rec_list_precision_at_{p}": tr["list_precision"]}
+        headline[scope] = h
+    presence_table(us, T).to_csv(d / "presence.csv", index=False)
+    (d / "recording_level.json").write_text(json.dumps(out, indent=2, default=str))
+    return headline
+
+
 def evaluate(
     cfg: dict,
     model_names: list[str],
@@ -93,6 +127,7 @@ def evaluate(
     out_root = Path(cfg.get("output_dir", "results")) / (run_name or time.strftime("%Y%m%d-%H%M%S"))
     cache_root = cfg.get("cache_dir", "cache")
     n_boot = cfg.get("bootstrap", 200)
+    rec = {**REC_DEFAULTS, **(cfg.get("recording_level") or {})}
 
     models = models or {m: build_model(m, cfg["models"][m], tax) for m in model_names}
     rows = []
@@ -102,11 +137,14 @@ def evaluate(
         groups = ev.segments["file"].to_numpy()
         log.info("Eval set %s: %d segments, %d files, %d classes", ev.name, len(y), len(ev.files), len(ev.classes))
 
-        aligned, covered = {}, {}
+        aligned, covered, windows = {}, {}, {}
         for name, model in models.items():
-            ws = get_window_scores(model, ev, cache_root, score_cfg["method"])
-            aligned[name], covered[name] = align(ev, ws, **align_cfg)
+            windows[name] = get_window_scores(model, ev, cache_root, score_cfg["method"])
+            aligned[name], covered[name] = align(ev, windows[name], **align_cfg)
         shared = np.logical_and.reduce(list(covered.values()))
+        if rec["enabled"]:
+            units, seg_unit = make_units(ev, rec["unit_s"])
+            T = unit_truth(y, seg_unit, len(units))
 
         for name in models:
             d = out_root / ev.name / name
@@ -120,13 +158,19 @@ def evaluate(
                 "alignment": align_cfg,
                 "coverage": {"covered": int(covered[name].sum()), "shared": int(shared.sum()), "total": len(ev.classes)},
             }
-            for scope, mask in (("all", None), ("covered", covered[name]), ("shared", shared)):
+            scopes = (("all", None), ("covered", covered[name]), ("shared", shared))
+            headline = {}
+            if rec["enabled"]:
+                headline = recording_level(
+                    ev, units, T, windows[name], scopes, rec, align_cfg, score_cfg["method"], n_boot, d
+                )
+            for scope, mask in scopes:
                 summ, per_class = metrics.compute(y, aligned[name], ev.classes, restrict=mask)
                 if n_boot:
                     summ["cmAP_ci95"] = metrics.bootstrap_cmap(y, aligned[name], groups, mask, n=n_boot)
                 result[scope] = summ
                 per_class.to_csv(d / f"per_class_{scope}.csv", index=False)
-                rows.append({"evalset": ev.name, "model": name, "classes": scope, **summ})
+                rows.append({"evalset": ev.name, "model": name, "classes": scope, **summ, **headline.get(scope, {})})
             missing = [c for c, ok in zip(ev.classes, covered[name]) if not ok]
             (d / "uncovered_classes.txt").write_text("\n".join(missing))
             (d / "summary.json").write_text(json.dumps(result, indent=2, default=str))
