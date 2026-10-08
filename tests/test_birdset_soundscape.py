@@ -64,12 +64,11 @@ def stub_birdset(tmp_path, monkeypatch):
     clips = _clips([("A_000_005.ogg", 5.0, ["x"]), ("A_005_010.ogg", 5.0, []),
                     ("B_000_005.ogg", 5.0, []), ("B_005_010.ogg", 5.0, ["y"])])
 
-    class _Scapes:
-        def unique(self, col):
-            return list(paths.values())
-
+    # call-level events: x at 1-2 s in A, y at 7-8 s in B, and a code outside the classes
+    events = pd.DataFrame({"scape": ["A.ogg", "B.ogg", "B.ogg"], "start": [1.0, 7.0, 3.0],
+                           "end": [2.0, 8.0, 4.0], "label": ["x", "y", "zz"]})
     monkeypatch.setattr(birdset, "_clip_table", lambda *a: (clips, ["x", "y"], []))
-    monkeypatch.setattr(birdset, "_load", lambda *a: _Scapes())
+    monkeypatch.setattr(birdset, "_test_table", lambda *a: (paths, events))
     return paths
 
 
@@ -82,6 +81,17 @@ def test_soundscape_loader_marks_uncovered_time(stub_birdset):
     assert ev.meta["uncovered_s"] == pytest.approx(2.0) and ev.meta["files_with_uncovered_time"] == 1
     # the source recording is the file: bootstrap groups are whole soundscapes
     assert set(ev.groups()) == set(stub_birdset.values())
+    # call-level events land on the soundscape files; codes outside the classes are dropped
+    assert ev.events.values.tolist() == [[stub_birdset["A.ogg"], 1.0, 2.0, "x"], [stub_birdset["B.ogg"], 7.0, 8.0, "y"]]
+
+
+def test_events_shift_onto_clips():
+    clips = _clips([("A_000_005.ogg", 5.0, []), ("A_005_010.ogg", 5.0, []), ("A_010_015.ogg", 2.0, [])])
+    events = pd.DataFrame({"scape": ["A.ogg", "A.ogg"], "start": [4.5, 11.0], "end": [5.5, 13.0], "label": ["x", "y"]})
+    out = birdset.events_on_clips(clips, events)
+    # a call across the 5 s boundary appears on both clips, in each clip's own time base
+    assert out.values.tolist() == [["/dl/A_000_005.ogg", 4.5, 5.5, "x"], ["/dl/A_005_010.ogg", -0.5, 0.5, "x"],
+                                   ["/dl/A_010_015.ogg", 1.0, 3.0, "y"]]
 
 
 def test_clip_mode_groups_clips_by_soundscape():

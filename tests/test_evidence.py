@@ -92,3 +92,50 @@ def test_detections_table(run):
     assert {"evidence_precision", "conditional_evidence_precision"} <= set(rec)
     summary = pd.read_csv(run.parents[1] / "summary.csv")
     assert "rec_evidence_precision_at_p50" in summary
+
+
+def _with_calls(calls, unreviewed=None):
+    """10 s file, two 5 s segments; calls: [(start, end, label)]."""
+    seg = pd.DataFrame({"file": [F, F], "start": [0.0, 5.0], "end": [5.0, 10.0],
+                        "labels": [sorted({l for s, e, l in calls if s < 5}), sorted({l for s, e, l in calls if e > 5})]})
+    if unreviewed is not None:
+        seg["unreviewed"] = unreviewed
+    events = pd.DataFrame([(F, s, e, l) for s, e, l in calls], columns=["file", "start", "end", "label"])
+    return EvalSet("c", seg, ["a", "b"], events=events)
+
+
+def _evidence(ev, window, cls=0):
+    units, _ = make_units(ev)
+    sc = np.full((1, 2), -9.0, np.float32)
+    sc[0, cls] = 5.0
+    ws = WindowScores(F, np.array([window[0]]), np.array([window[1]]), sc, ["a", "b"])
+    us = aggregate(ev, {F: ws}, units)
+    return evidence_truth(ev, ev.target_matrix(), us)[0, cls]
+
+
+def test_call_level_evidence_is_stricter_than_segment_labels():
+    ev = _with_calls([(0.5, 1.5, "a")])  # segment 0-5 is labelled a
+    # window 3-6 has 2 of its 3 s in segment 0-5: the segment check would accept it,
+    # but it never overlaps the call
+    assert _evidence(ev, (3.0, 6.0)) == 0
+    assert _evidence(ev, (0.0, 3.0)) == 1
+    seg_only = EvalSet("s", ev.segments, ev.classes)  # no events: segment fallback
+    assert _evidence(seg_only, (3.0, 6.0)) == 1
+
+
+def test_call_level_evidence_overlap_rule():
+    ev = _with_calls([(2.0, 4.0, "a"), (8.0, 8.3, "a")])
+    assert _evidence(ev, (3.6, 6.6)) == 0       # overlaps the 2 s call by 0.4 s < 0.5
+    assert _evidence(ev, (3.5, 6.5)) == 1       # by 0.5 s
+    assert _evidence(ev, (7.0, 10.0)) == 1      # a 0.3 s call wholly inside the window
+
+
+def test_call_level_evidence_unknown_cases():
+    # a is not reviewed in 5-10 s: a window there without an a call is unknown, not wrong
+    ev = _with_calls([(0.5, 1.5, "a")], unreviewed=[[], ["a"]])
+    assert _evidence(ev, (6.0, 9.0)) == -1
+    # 5-10 s is unreviewed time (no species checked): a window reaching into it
+    # without hitting a call is unknown; one that hits the call is still correct
+    ev = _with_calls([(0.5, 1.5, "a")], unreviewed=[[], ["a", "b"]])
+    assert _evidence(ev, (3.5, 6.5)) == -1
+    assert _evidence(ev, (0.0, 3.0)) == 1

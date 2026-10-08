@@ -34,6 +34,10 @@ recording_level:
   precision_targets: [0.8, 0.9, 0.95]
   operating_target: 0.9         # its threshold defines the claims in detections.csv
   fp_review_n: 200              # top-scoring wrong claims exported for expert listening
+  # Evidence is checked against call-level labels when the eval set has them
+  # (BirdSet, strong_labels): the cited window must overlap a call of that
+  # species by >= this (or contain a shorter call whole).
+  evidence_min_event_overlap_s: 0.5
 
 cache_dir: cache
 output_dir: results

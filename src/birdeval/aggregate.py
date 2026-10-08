@@ -32,6 +32,7 @@ import pandas as pd
 
 from .align import window_hits
 from .data import EvalSet, WindowScores
+from .evalsets.strong_labels import event_hits
 
 FEATURES = ("max_score", "top3_mean", "n_above")
 
@@ -149,14 +150,27 @@ def aggregate(
 
 
 def evidence_truth(
-    ev: EvalSet, y: np.ndarray, us: UnitScores, rule: str = "half_window", min_overlap_s: float = 1.0
+    ev: EvalSet,
+    y: np.ndarray,
+    us: UnitScores,
+    rule: str = "half_window",
+    min_overlap_s: float = 1.0,
+    min_event_overlap_s: float = 0.5,
 ) -> np.ndarray:
     """[n_units, n_classes] int8: does the evidence window contain the species?
 
-    1 if the window counts towards (align.window_hits) a segment labelled
-    present for that species; else -1 if any segment it counts towards is
-    unreviewed for it, or it counts towards no labelled time; else 0.
+    With call-level labels (ev.events): 1 if the window overlaps a call of
+    that species by >= min_event_overlap_s (or contains a shorter call whole;
+    the same rule that builds segment labels); else -1 if the window touches
+    time unreviewed for that species, or no reviewed time at all; else 0.
+
+    Without them, the 5 s segment labels: 1 if the window counts towards
+    (align.window_hits) a segment labelled present; else -1 if any segment it
+    counts towards is unreviewed for it, or it counts towards no labelled
+    time; else 0.
     """
+    if ev.events is not None:
+        return _evidence_from_events(ev, y, us, min_event_overlap_s)
     E = np.full(us.max_score.shape, -1, np.int8)
     seg = ev.segments
     by_file = {f: g.index.to_numpy() for f, g in seg.groupby("file", sort=False)}
@@ -180,6 +194,28 @@ def evidence_truth(
         pos = (hit & (lab == 1)).any(axis=1)
         unk = (hit & (lab == -1)).any(axis=1) | ~hit.any(axis=1)
         E[u, c] = np.where(pos, 1, np.where(unk, -1, 0))
+    return E
+
+
+def _evidence_from_events(ev: EvalSet, y: np.ndarray, us: UnitScores, min_event_overlap_s: float) -> np.ndarray:
+    E = np.full(us.max_score.shape, -1, np.int8)
+    seg = ev.segments
+    by_file = {f: g.index.to_numpy() for f, g in seg.groupby("file", sort=False)}
+    calls = {k: (g["start"].to_numpy(float), g["end"].to_numpy(float))
+             for k, g in ev.events.groupby(["file", "label"], sort=False)}
+    s0, s1 = seg["start"].to_numpy(), seg["end"].to_numpy()
+    for u, file in enumerate(us.units.file):
+        rows = by_file[file]
+        for c in np.flatnonzero(np.isfinite(us.evidence_start[u])):
+            es, ee = us.evidence_start[u, c], us.evidence_end[u, c]
+            cs, ce = calls.get((file, us.classes[c]), (np.zeros(0), np.zeros(0)))
+            if event_hits(cs, ce, es, ee, min_event_overlap_s).any():
+                E[u, c] = 1
+                continue
+            touches = (np.minimum(ee, s1[rows]) - np.maximum(es, s0[rows])) > 0
+            lab = y[rows, c]
+            unknown = (touches & (lab == -1)).any() or not (touches & (lab != -1)).any()
+            E[u, c] = -1 if unknown else 0
     return E
 
 

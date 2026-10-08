@@ -17,6 +17,10 @@ load_birdset_soundscapes (loader: birdset_soundscape)
     length from `end_time` (last clips can be partial). Time no clip covers
     becomes segments that are not reviewed for any species.
 
+Both modes also carry BirdSet's call-level labels (the `test` split's
+events) as EvalSet.events, shifted onto each clip in clip mode, so
+recording-level evidence is checked against the calls themselves.
+
 Both use the `<config>_scape` builder, which downloads only the test
 material. The plain `<config>` builder also downloads the training audio
 (~16 GB for POW alone).
@@ -100,6 +104,37 @@ def _clip_table(config: str, taxonomy: Taxonomy, cache_dir: str | None) -> tuple
     return df, classes, unmapped
 
 
+def _test_table(config: str, taxonomy: Taxonomy, cache_dir: str | None) -> tuple[dict[str, str], pd.DataFrame]:
+    """Soundscape paths by file name, and call-level events (scape, start, end, label)."""
+    ds = _load(config, "test", cache_dir)
+    names = ds.features["ebird_code"].names
+    mapped, _ = taxonomy.map_many(list(names), kind="ebird")  # unmapped codes are reported by _clip_table
+    df = ds.select_columns(["filepath", "start_time", "end_time", "ebird_code"]).to_pandas()
+    paths = {Path(p).name: str(Path(p).resolve()) for p in df["filepath"].unique()}
+    events = pd.DataFrame({
+        "scape": df["filepath"].map(lambda p: Path(p).name),
+        "start": df["start_time"].astype(float),
+        "end": df["end_time"].astype(float),
+        "label": df["ebird_code"].map(lambda i: mapped[int(i)] if pd.notna(i) else None),
+    })
+    return paths, events.dropna(subset=["label"]).reset_index(drop=True)
+
+
+def events_on_clips(clips: pd.DataFrame, events: pd.DataFrame) -> pd.DataFrame:
+    """Shift soundscape events onto the test_5s clips they overlap (clip time base)."""
+    by_scape = {k: g for k, g in events.groupby("scape", sort=False)}
+    rows = []
+    for f, s, e in zip(clips["file"], clips["start"], clips["end"]):
+        scape, offset = parse_clip_name(f)
+        g = by_scape.get(scape)
+        if g is None:
+            continue
+        hit = (g["end"] > offset) & (g["start"] < offset + (e - s))
+        for cs, ce, lab in zip(g["start"][hit], g["end"][hit], g["label"][hit]):
+            rows.append((f, cs - offset, ce - offset, lab))
+    return pd.DataFrame(rows, columns=["file", "start", "end", "label"])
+
+
 def load_birdset(
     name: str,
     taxonomy: Taxonomy,
@@ -117,11 +152,14 @@ def load_birdset(
         keep = sorted(df["file"].unique())[:max_files]
         df = df[df["file"].isin(keep)]
 
+    _, events = _test_table(config, taxonomy, cache_dir)
+    events = events_on_clips(df, events[events["label"].isin(classes)])
     return EvalSet(
         name=name,
         segments=df[["file", "start", "end", "labels", "recording"]],
         classes=classes,
         meta={"source": "birdset", "mode": "clips", "config": config, "split": split, "unmapped_codes": unmapped},
+        events=events,
     )
 
 
@@ -165,8 +203,7 @@ def load_birdset_soundscapes(
     max_files: int | None = None,
 ) -> EvalSet:
     clips, classes, unmapped = _clip_table(config, taxonomy, cache_dir)
-    scapes = _load(config, "test", cache_dir).unique(_COLS["file"])
-    scape_paths = {Path(p).name: str(Path(p).resolve()) for p in scapes}
+    scape_paths, events = _test_table(config, taxonomy, cache_dir)
     seg = clips_to_soundscape(clips, scape_paths)
 
     if max_files:
@@ -185,10 +222,13 @@ def load_birdset_soundscapes(
         log.info("BirdSet %s soundscapes: %.1f s not covered by any test_5s clip (marked not reviewed) in %d/%d files",
                  config, uncovered_s, gaps["file"].nunique(), len(durations))
 
+    events = events[events["label"].isin(classes)].assign(file=lambda d: d["scape"].map(scape_paths))
+    events = events[events["file"].isin(durations)][["file", "start", "end", "label"]]
     return EvalSet(
         name=name,
         segments=seg,
         classes=classes,
         meta={"source": "birdset", "mode": "soundscapes", "config": config, "unmapped_codes": unmapped,
               "uncovered_s": uncovered_s, "files_with_uncovered_time": int(gaps["file"].nunique()) if len(gaps) else 0},
+        events=events,
     )

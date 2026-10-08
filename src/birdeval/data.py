@@ -35,12 +35,17 @@ class EvalSet:
     classes: the canonical label vocabulary for this set. Metrics are computed
         over these classes; a class with zero positives is skipped by AP-style
         metrics but still counts towards coverage.
+    events: optional call-level labels (file, start, end, label), in the same
+        files and time base as `segments`. When present, recording-level
+        evidence is checked against the calls themselves rather than the
+        5 s segment labels.
     """
 
     name: str
     segments: pd.DataFrame
     classes: list[str]
     meta: dict = field(default_factory=dict)
+    events: pd.DataFrame | None = None
 
     def __post_init__(self) -> None:
         missing = set(SEGMENT_COLUMNS) - set(self.segments.columns)
@@ -55,6 +60,14 @@ class EvalSet:
                 raise ValueError(
                     f"EvalSet {self.name!r} has {col} outside its class list: {sorted(unknown)[:10]}"
                 )
+        if self.events is not None:
+            missing = {"file", "start", "end", "label"} - set(self.events.columns)
+            if missing:
+                raise ValueError(f"EvalSet {self.name!r} events missing columns: {missing}")
+            unknown = set(self.events["label"]) - set(self.classes)
+            if unknown:
+                raise ValueError(f"EvalSet {self.name!r} has events outside its class list: {sorted(unknown)[:10]}")
+            self.events = self.events.reset_index(drop=True)
 
     def time_reviewed(self) -> np.ndarray:
         """Per segment: False if the segment is unreviewed for every class

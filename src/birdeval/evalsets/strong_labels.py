@@ -159,7 +159,8 @@ def load_strong_labels(
     reviewed = _reviewed_species(reviewed_species, taxonomy, label_type)
     classes = sorted(set(ann["label"]) | (reviewed or set()))
     seg = _mark_unreviewed(seg, classes, reviewed, ranges)
-    return EvalSet(name, seg, classes, meta={"source": "strong_labels", "unmapped": unmapped})
+    events = ann[ann["file"].isin(files)][["file", "start", "end", "label"]]
+    return EvalSet(name, seg, classes, meta={"source": "strong_labels", "unmapped": unmapped}, events=events)
 
 
 def load_segments_csv(

@@ -101,6 +101,7 @@ REC_DEFAULTS = {
     "precision_targets": [0.8, 0.9, 0.95],
     "operating_target": 0.9,  # which target's threshold detections.csv uses
     "fp_review_n": 200,
+    "evidence_min_event_overlap_s": 0.5,  # call-level evidence: same rule as label building
 }
 
 
@@ -116,7 +117,7 @@ def recording_level(ev, y, units, T, windows, scopes, rec, align_cfg, method, n_
                          f"is not one of precision_targets {rec['precision_targets']}")
     rule = {"rule": align_cfg["rule"], "min_overlap_s": align_cfg["min_overlap_s"]}  # same rule as segments
     us = aggregate(ev, windows, units, tau=rec["tau"], floor=scoring.floor(method), **rule)
-    E = evidence_truth(ev, y, us, **rule)
+    E = evidence_truth(ev, y, us, min_event_overlap_s=rec["evidence_min_event_overlap_s"], **rule)
     seg_s = (ev.segments["end"] - ev.segments["start"]).to_numpy()
     out = {
         "units": {"unit_s": rec["unit_s"], "n_units": len(units),
