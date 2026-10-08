@@ -47,6 +47,19 @@ def _resolve(audio_root: str | None, f: str) -> str:
     return str(p.resolve())
 
 
+def event_hits(ev_start, ev_end, s: float, e: float, min_event_overlap_s: float = 0.5) -> np.ndarray:
+    """Which events count as present in segment [s, e].
+
+    An event counts if it overlaps the segment by >= min_event_overlap_s, or
+    if it is shorter than that and lies entirely inside the segment.
+    """
+    ev_start, ev_end = np.asarray(ev_start, float), np.asarray(ev_end, float)
+    ov = np.minimum(ev_end, e) - np.maximum(ev_start, s)
+    length = ev_end - ev_start
+    short_inside = (length < min_event_overlap_s) & (ov >= length)
+    return (ov >= min_event_overlap_s) | (short_inside & (ov > 0))
+
+
 def _map_labels(labels: pd.Series, taxonomy: Taxonomy, label_type: str) -> tuple[pd.Series, list]:
     uniq = sorted({l for l in labels if isinstance(l, str) and l})
     mapped, unmapped = taxonomy.map_many(uniq, kind=label_type)
@@ -139,10 +152,7 @@ def load_strong_labels(
         ev = ann[ann["file"] == f]
         for k in range(max(n, 1)):
             s, e = k * segment_s, min((k + 1) * segment_s, dur)
-            ov = np.minimum(ev["end"], e) - np.maximum(ev["start"], s)
-            # an event shorter than the overlap threshold still counts if fully inside
-            short_inside = (ev["end"] - ev["start"] < min_event_overlap_s) & (ov >= ev["end"] - ev["start"])
-            hit = (ov >= min_event_overlap_s) | (short_inside & (ov > 0))
+            hit = event_hits(ev["start"], ev["end"], s, e, min_event_overlap_s)
             rows.append((f, s, e, sorted(set(ev.loc[hit, "label"]))))
 
     seg = pd.DataFrame(rows, columns=["file", "start", "end", "labels"])
