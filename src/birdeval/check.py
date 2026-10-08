@@ -66,14 +66,14 @@ def _validate(ws: WindowScores, dur: float) -> None:
         raise AssertionError(f"{Path(ws.file).name}: bad score shape {s.shape}")
     if len(ws.starts) == 0:
         raise AssertionError(f"{Path(ws.file).name}: no windows")
-    if not np.isfinite(s).all() or s.min() < 0 or s.max() > 1:
-        raise AssertionError(f"{Path(ws.file).name}: scores outside [0, 1]: {s.min():.3g}..{s.max():.3g}")
+    if not np.isfinite(s).all():
+        raise AssertionError(f"{Path(ws.file).name}: non-finite scores")
     if ws.ends.max() > dur + 1e-3:
         raise AssertionError(f"{Path(ws.file).name}: window ends {ws.ends.max():.2f}s past duration {dur:.2f}s")
 
 
 def top_k(ws: WindowScores, k: int = 3) -> list[tuple[str, float]]:
-    """Top classes by max score over windows."""
+    """Top classes by max score (raw logit) over windows."""
     m = ws.scores.max(axis=0)
     return [(ws.classes[j], float(m[j])) for j in np.argsort(-m)[:k]]
 
@@ -149,5 +149,5 @@ def format_report(results: list[CheckResult]) -> str:
         if r.error:
             lines.append(f"    error: {r.error}")
         for clip, top in r.top.items():
-            lines.append(f"    {clip}: " + ", ".join(f"{c} ({p:.2f})" for c, p in top))
+            lines.append(f"    {clip}: " + ", ".join(f"{c} (logit {p:.1f})" for c, p in top))
     return "\n".join(lines)

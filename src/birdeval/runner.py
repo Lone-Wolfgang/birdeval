@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from . import metrics
+from . import metrics, scoring
 from .align import align
 from .cache import PredictionCache
 from .data import EvalSet
@@ -50,8 +50,22 @@ def load_config(path: str) -> dict:
     return cfg
 
 
+def alignment_config(cfg: dict, method: str) -> dict:
+    """Alignment settings, with missing_value defaulting to the scorer's floor."""
+    a = dict(cfg.get("alignment", {}))
+    if a.get("missing_value") is None:
+        a["missing_value"] = scoring.floor(method)
+    elif method == "logit":
+        log.warning(
+            "alignment.missing_value=%s is a real score in logit space (0.0 = p 0.5); "
+            "remove it to use the scorer floor",
+            a["missing_value"],
+        )
+    return a
+
+
 def get_window_scores(
-    model: ModelAdapter, ev: EvalSet, cache_root: str
+    model: ModelAdapter, ev: EvalSet, cache_root: str, method: str = "logit"
 ) -> dict:
     cache = PredictionCache(cache_root, model.cache_key(), ev.name, ev.classes)
     todo = cache.missing(ev.files)
@@ -63,7 +77,7 @@ def get_window_scores(
         log.info("  done in %.1fs", time.time() - t0)
     else:
         log.info("%s on %s: all %d files cached", model.name, ev.name, len(ev.files))
-    return {f: cache.get(f) for f in ev.files}
+    return {f: scoring.apply(cache.get(f), method) for f in ev.files}
 
 
 def evaluate(
@@ -74,7 +88,8 @@ def evaluate(
     models: dict[str, ModelAdapter] | None = None,
 ) -> pd.DataFrame:
     tax = Taxonomy(**cfg.get("taxonomy", {}))
-    align_cfg = cfg.get("alignment", {})
+    score_cfg = {"method": "logit", **cfg.get("scoring", {})}
+    align_cfg = alignment_config(cfg, score_cfg["method"])
     out_root = Path(cfg.get("output_dir", "results")) / (run_name or time.strftime("%Y%m%d-%H%M%S"))
     cache_root = cfg.get("cache_dir", "cache")
     n_boot = cfg.get("bootstrap", 200)
@@ -89,7 +104,7 @@ def evaluate(
 
         aligned, covered = {}, {}
         for name, model in models.items():
-            ws = get_window_scores(model, ev, cache_root)
+            ws = get_window_scores(model, ev, cache_root, score_cfg["method"])
             aligned[name], covered[name] = align(ev, ws, **align_cfg)
         shared = np.logical_and.reduce(list(covered.values()))
 
@@ -101,6 +116,7 @@ def evaluate(
                 "evalset": ev.name,
                 "model_info": models[name].version_info(),
                 "evalset_meta": {k: v for k, v in ev.meta.items() if not isinstance(v, list)},
+                "scoring": score_cfg,
                 "alignment": align_cfg,
                 "coverage": {"covered": int(covered[name].sum()), "shared": int(shared.sum()), "total": len(ev.classes)},
             }

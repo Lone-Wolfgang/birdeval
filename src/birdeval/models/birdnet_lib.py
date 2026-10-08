@@ -8,8 +8,17 @@ Written against birdnet 1.1.1, which loads all three:
 For evaluation we need the full score vector, not detections, so every call
 uses default_confidence_threshold=None and top_k = size of the species list.
 Output is restricted to the eval set's vocabulary via custom_species_list to
-keep memory small; sigmoid scores are per-class, so restricting does not change
-any score.
+keep memory small; scores are per-class, so restricting does not change any
+score.
+
+Scores are cached as raw logits (`score_space` in version_info), and the
+scorer stage (scoring.py) turns them into whatever the run asks for:
+- 2.4 and Perch V2: apply_sigmoid=False returns the model's logits. birdnet's
+  own sigmoid clips logits at +-15, which ties Perch's most confident windows
+  (its logits run ~7-9 for absent species, 12-14 for present ones).
+- 3.0: the exports apply the sigmoid inside the graph and expose only
+  probabilities, so logits are reconstructed as logit(clip(p, 1e-7, 1-1e-7))
+  ("logit_from_prob"). Ranking is preserved except among clipped values.
 """
 
 from __future__ import annotations
@@ -47,6 +56,7 @@ class BirdNETLibModel(ModelAdapter):
             backend=backend,
             overlap_s=overlap_s,
             segment_size_s=segment_size_s,
+            score_space="logit_from_prob" if version == "3.0" else "logit",
         )
         self.version = version
         self.backend = backend
@@ -108,10 +118,8 @@ class BirdNETLibModel(ModelAdapter):
             batch_size=self.batch_size,
             n_workers=self.n_workers,
             device=self.device,
-            apply_sigmoid=True,
-            # 1.0 = plain sigmoid (zero bias). BirdNET defaults to this, but
-            # Perch defaults to None, which birdnet rejects with apply_sigmoid.
-            sigmoid_sensitivity=1.0,
+            apply_sigmoid=False,  # raw logits (3.0: probabilities, see module doc)
+            apply_softmax=False,
         )
         if self.version == "3.0" and self.segment_size_s:
             kwargs["segment_size_s"] = self.segment_size_s
@@ -120,12 +128,22 @@ class BirdNETLibModel(ModelAdapter):
         for i in range(0, len(files), self.files_per_call):
             chunk = files[i : i + self.files_per_call]
             res = self.model.predict(chunk, **kwargs)
-            out.update(_densify(res, native, canon))
+            dense = _densify(res, native, canon)
+            if self.params["score_space"] == "logit_from_prob":
+                for ws in dense.values():
+                    ws.scores = prob_to_logit(ws.scores)
+            out.update(dense)
         missing = set(files) - set(out)
         for f in missing:  # unreadable / too-short files
             log.warning("%s produced no output for %s", self.name, f)
             out[f] = _empty(f, canon)
         return out
+
+
+def prob_to_logit(p: np.ndarray, eps: float = 1e-7) -> np.ndarray:
+    """Logit of probabilities, clipped so p in {0, 1} stays finite."""
+    p = np.clip(p.astype(np.float64), eps, 1 - eps)
+    return (np.log(p) - np.log1p(-p)).astype(np.float32)
 
 
 def _empty(file: str, classes: list[str] | None = None) -> WindowScores:

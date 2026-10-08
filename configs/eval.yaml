@@ -9,10 +9,17 @@ taxonomy:
   # Old name -> current name, for splits/renames between model and eval taxonomies.
   synonyms_yaml: taxonomy/synonyms.yaml
 
+# The cache holds raw logits; this picks what the metrics see. Ranking metrics
+# (cmAP, AUROC, top-1) are identical for both, up to ties.
+scoring:
+  method: logit        # logit | sigmoid
+
 alignment:
   # A segment's score = max over model windows overlapping it by >= this many seconds.
   min_overlap_s: 1.0
-  missing_value: 0.0
+  # Score for classes a model can't predict / segments no window covers.
+  # Default (null): the scorer's floor, which ranks below every real score.
+  missing_value: null
 
 cache_dir: cache
 output_dir: results
