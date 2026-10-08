@@ -14,6 +14,10 @@ scope exactly as at segment level (all / covered / shared).
 - by duration: the same at the *global* operating threshold, per duration
   bin. Re-picking a threshold per bin would hide that longer recordings give
   absent species more chances at one high window.
+- evidence precision: of the claims at the operating threshold, how many
+  cite an evidence window that really contains the species (unknown evidence
+  excluded). The conditional version only counts claims that are right at
+  unit level, separating "wrong species" from "right species, wrong clip".
 - bootstrap CIs resample groups (sites if the eval set has a `site` column,
   else files). Recall-at-precision re-picks its threshold in each resample;
   list precision is measured at the fixed global threshold, as deployed.
@@ -65,6 +69,16 @@ def list_precision(truth: np.ndarray, score: np.ndarray, unit: np.ndarray, thres
     }
 
 
+def evidence_precision(T: np.ndarray, S: np.ndarray, E: np.ndarray, cols: np.ndarray, threshold: float) -> dict:
+    t, s, e = T[:, cols], S[:, cols], E[:, cols]
+    claim = (t != -1) & (s >= threshold) if np.isfinite(threshold) else np.zeros(t.shape, bool)
+    known = claim & (e != -1)
+    cond = known & (t == 1)
+    frac = lambda m: float((e[m] == 1).mean()) if m.any() else float("nan")  # noqa: E731
+    return {"evidence_precision": frac(known), "conditional_evidence_precision": frac(cond),
+            "n_evidence_known": int(known.sum()), "n_evidence_unknown": int((claim & (e == -1)).sum())}
+
+
 def rec_cmap(T: np.ndarray, S: np.ndarray, cols: np.ndarray) -> tuple[float, int]:
     aps = []
     for c in cols:
@@ -97,8 +111,9 @@ def compute(
     duration_bins_s: list[float] = (60, 300, 900, 3600),
     n_boot: int = 200,
     seed: int = 0,
+    E: np.ndarray | None = None,
 ) -> dict:
-    """T: [U, C] int8 unit truth; S: [U, C] presence scores."""
+    """T: [U, C] int8 unit truth; S: [U, C] presence scores; E: [U, C] evidence truth."""
     cols = np.arange(T.shape[1]) if restrict is None else np.flatnonzero(restrict)
     cmap, n_cls = rec_cmap(T, S, cols)
     t, s, u = _pairs(T, S, cols)
@@ -118,6 +133,8 @@ def compute(
         res = {**op, "list_precision": lp["list_precision"],
                "list_precision_unit_mean": lp["list_precision_unit_mean"],
                "n_units_with_claims": lp["n_units_with_claims"]}
+        if E is not None:
+            res |= evidence_precision(T, S, E, cols, op["threshold"])
         if not op["reached"]:
             res["note"] = f"no threshold reaches precision {target}"
         if boots:

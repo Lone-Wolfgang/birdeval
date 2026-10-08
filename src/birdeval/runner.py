@@ -28,7 +28,15 @@ import pandas as pd
 import yaml
 
 from . import metrics, recording_metrics, scoring
-from .aggregate import aggregate, make_units, presence_table, unit_truth
+from .aggregate import (
+    aggregate,
+    detections_table,
+    evidence_truth,
+    fp_review_table,
+    make_units,
+    presence_table,
+    unit_truth,
+)
 from .align import align
 from .cache import PredictionCache
 from .data import EvalSet
@@ -88,28 +96,41 @@ REC_DEFAULTS = {
     "tau": 0.0,
     "precision_targets": [0.9],
     "min_overlap_s": None,  # None = alignment.min_overlap_s
+    "fp_review_n": 200,
 }
 
 
-def recording_level(ev, units, T, windows, scopes, rec, align_cfg, method, n_boot, d) -> dict:
-    """Write recording_level.json + presence.csv for one model; return headline
-    columns per scope for summary.csv."""
+def recording_level(ev, y, units, T, windows, scopes, rec, align_cfg, method, n_boot, d) -> dict:
+    """Write recording_level.json, presence.csv, detections.csv and fp_review.csv
+    for one model; return headline columns per scope for summary.csv.
+
+    The operating threshold for detections.csv is the one meeting the first
+    precision target on the `all` scope.
+    """
     min_ov = rec["min_overlap_s"] if rec["min_overlap_s"] is not None else align_cfg.get("min_overlap_s", 1.0)
     us = aggregate(ev, windows, units, tau=rec["tau"], min_overlap_s=min_ov, floor=scoring.floor(method))
+    E = evidence_truth(ev, y, us, min_overlap_s=min_ov)
     out, headline = {"units": {"unit_s": rec["unit_s"], "n_units": len(units)}, "config": rec}, {}
     for scope, mask in scopes:
         r = recording_metrics.compute(
             T, us.max_score, units["duration_s"].to_numpy(), units["group"].to_numpy(), restrict=mask,
-            targets=rec["precision_targets"], duration_bins_s=rec["duration_bins_s"], n_boot=n_boot,
+            targets=rec["precision_targets"], duration_bins_s=rec["duration_bins_s"], n_boot=n_boot, E=E,
         )
         out[scope] = r
         h = {"rec_cmAP": r["cmAP"]}
         for t, tr in r["targets"].items():
             p = f"p{round(float(t) * 100)}"
             h |= {f"rec_recall_at_{p}": tr["recall"], f"rec_threshold_at_{p}": tr["threshold"],
-                  f"rec_list_precision_at_{p}": tr["list_precision"]}
+                  f"rec_list_precision_at_{p}": tr["list_precision"],
+                  f"rec_evidence_precision_at_{p}": tr["evidence_precision"]}
         headline[scope] = h
-    presence_table(us, T).to_csv(d / "presence.csv", index=False)
+    op = out["all"]["targets"][str(rec["precision_targets"][0])]
+    if not op["reached"]:
+        log.warning("%s: %s; detections.csv is empty", d.name, op["note"])
+    pres = presence_table(us, T, evidence=E)
+    pres.drop(columns="evidence_truth").to_csv(d / "presence.csv", index=False)
+    detections_table(pres, op["threshold"]).to_csv(d / "detections.csv", index=False)
+    fp_review_table(pres, op["threshold"], rec["fp_review_n"]).to_csv(d / "fp_review.csv", index=False)
     (d / "recording_level.json").write_text(json.dumps(out, indent=2, default=str))
     return headline
 
@@ -162,7 +183,7 @@ def evaluate(
             headline = {}
             if rec["enabled"]:
                 headline = recording_level(
-                    ev, units, T, windows[name], scopes, rec, align_cfg, score_cfg["method"], n_boot, d
+                    ev, y, units, T, windows[name], scopes, rec, align_cfg, score_cfg["method"], n_boot, d
                 )
             for scope, mask in scopes:
                 summ, per_class = metrics.compute(y, aligned[name], ev.classes, restrict=mask)

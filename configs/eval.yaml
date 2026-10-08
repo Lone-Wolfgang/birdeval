@@ -29,6 +29,7 @@ recording_level:
   tau: 0.0                      # n_above threshold, on the scorer's scale (0.0 logit = p 0.5)
   precision_targets: [0.9]
   min_overlap_s: null           # window-in-unit overlap; null = alignment.min_overlap_s
+  fp_review_n: 200              # top-scoring wrong claims exported for expert listening
 
 cache_dir: cache
 output_dir: results

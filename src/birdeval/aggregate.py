@@ -121,7 +121,36 @@ def aggregate(
     return UnitScores(units, list(classes), covered, mx, t3, n_above, ev_s, ev_e)
 
 
-def presence_table(us: UnitScores, truth: np.ndarray, conf: np.ndarray | None = None) -> pd.DataFrame:
+def evidence_truth(ev: EvalSet, y: np.ndarray, us: UnitScores, min_overlap_s: float = 1.0) -> np.ndarray:
+    """[n_units, n_classes] int8: does the evidence window contain the species?
+
+    1 if it overlaps a segment labelled present for that species by
+    >= min_overlap_s (or all of a shorter window); else -1 if any overlapping
+    segment is unreviewed for it, or it overlaps no labelled time; else 0.
+    """
+    E = np.full(us.max_score.shape, -1, np.int8)
+    seg = ev.segments
+    by_file = {f: g.index.to_numpy() for f, g in seg.groupby("file", sort=False)}
+    s0, s1 = seg["start"].to_numpy(), seg["end"].to_numpy()
+    for u, file in enumerate(us.units.file):
+        rows = by_file[file]
+        es, ee = us.evidence_start[u], us.evidence_end[u]  # [C]
+        ok = np.isfinite(es)
+        if not ok.any():
+            continue
+        c = np.flatnonzero(ok)
+        ov = np.minimum(ee[c, None], s1[rows]) - np.maximum(es[c, None], s0[rows])  # [c, n_seg]
+        hit = (ov > 0) & (ov >= np.minimum(min_overlap_s, ee[c] - es[c])[:, None])
+        lab = y[rows][:, c].T  # [c, n_seg]
+        pos = (hit & (lab == 1)).any(axis=1)
+        unk = (hit & (lab == -1)).any(axis=1) | ~hit.any(axis=1)
+        E[u, c] = np.where(pos, 1, np.where(unk, -1, 0))
+    return E
+
+
+def presence_table(
+    us: UnitScores, truth: np.ndarray, conf: np.ndarray | None = None, evidence: np.ndarray | None = None
+) -> pd.DataFrame:
     """Long table of (unit, species) rows for the classes the model covers."""
     conf = us.max_score if conf is None else conf
     cols = np.flatnonzero(us.covered)
@@ -142,5 +171,29 @@ def presence_table(us: UnitScores, truth: np.ndarray, conf: np.ndarray | None = 
             "evidence_start": us.evidence_start[:, cols].ravel(),
             "evidence_end": us.evidence_end[:, cols].ravel(),
             "truth": truth[:, cols].ravel(),
+            **({"evidence_truth": evidence[:, cols].ravel()} if evidence is not None else {}),
         }
     )
+
+
+def detections_table(pres: pd.DataFrame, threshold: float) -> pd.DataFrame:
+    """The deployment's detection table (one row per claim) plus truth columns."""
+    claims = pres[pres["presence_conf"] >= threshold] if np.isfinite(threshold) else pres.iloc[:0]
+    return (
+        claims.rename(columns={"evidence_start": "start", "evidence_end": "end", "presence_conf": "confidence",
+                               "truth": "presence_correct", "evidence_truth": "evidence_correct"})
+        [["file", "start", "end", "species", "confidence", "unit", "presence_correct", "evidence_correct"]]
+        .sort_values(["file", "start", "species"])
+    )
+
+
+def fp_review_table(pres: pd.DataFrame, threshold: float, n: int = 200) -> pd.DataFrame:
+    """The n highest-scoring absent (unit, species) pairs, for an expert to listen to.
+
+    Not limited to claims above the threshold, so there is a list to review
+    even when no threshold reaches the precision target.
+    """
+    fp = pres[pres["truth"] == 0].sort_values("presence_conf", ascending=False, kind="stable").head(n)
+    fp = fp.assign(above_threshold=fp["presence_conf"] >= threshold)
+    return fp[["file", "evidence_start", "evidence_end", "species", "presence_conf", "unit",
+               "n_above", "n_windows", "above_threshold"]]
