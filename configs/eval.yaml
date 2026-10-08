@@ -1,0 +1,59 @@
+# One registry for every model and eval set. Pick any combination at run time:
+#   birdeval run -m birdnet_2.4 perch_v2 -e birdset_HSN birdset_POW
+
+taxonomy:
+  # eBird/Clements taxonomy CSV (needs SPECIES_CODE and SCI_NAME columns).
+  # Download from https://www.birds.cornell.edu/clementschecklist/ or eBird.
+  # Required for BirdSet, whose labels are eBird codes.
+  ebird_csv: taxonomy/ebird_taxonomy.csv
+  # Old name -> current name, for splits/renames between model and eval taxonomies.
+  synonyms_yaml: taxonomy/synonyms.yaml
+
+alignment:
+  # A segment's score = max over model windows overlapping it by >= this many seconds.
+  min_overlap_s: 1.0
+  missing_value: 0.0
+
+cache_dir: cache
+output_dir: results
+bootstrap: 200   # file-level bootstrap resamples for the cmAP CI (0 to skip)
+
+models:
+  birdnet_2.4:
+    adapter: birdnet
+    version: "2.4"
+    backend: tf          # or pb
+    overlap_s: 1.5       # 3 s windows, 1.5 s hop
+  birdnet_3.0:
+    adapter: birdnet
+    version: "3.0"
+    backend: onnx        # or pt / tf / pb
+    segment_size_s: 3.0  # 3.0 accepts variable windows; try 5.0 to match Perch/BirdSet
+    overlap_s: 1.5
+  perch_v2:
+    adapter: birdnet
+    version: perch_v2
+    device: CPU          # or GPU; needs TensorFlow
+    overlap_s: 2.5       # 5 s windows, 2.5 s hop
+
+evalsets:
+  # BirdSet test soundscapes, 5 s segments. max_files is handy for a smoke test.
+  birdset_HSN: {loader: birdset, config: HSN, split: test_5s}
+  birdset_NBP: {loader: birdset, config: NBP, split: test_5s}
+  birdset_NES: {loader: birdset, config: NES, split: test_5s}
+  birdset_PER: {loader: birdset, config: PER, split: test_5s}
+  birdset_POW: {loader: birdset, config: POW, split: test_5s}
+  birdset_SNE: {loader: birdset, config: SNE, split: test_5s}
+  birdset_SSW: {loader: birdset, config: SSW, split: test_5s}
+  birdset_UHH: {loader: birdset, config: UHH, split: test_5s}
+  birdset_POW_smoke: {loader: birdset, config: POW, split: test_5s, max_files: 3}
+
+  # Your own strongly labelled data, when you're ready:
+  # mine:
+  #   loader: strong_labels
+  #   annotations: /path/to/annotations.csv
+  #   audio_root: /path/to/audio
+  #   label_type: sci                 # sci | ebird | birdnet
+  #   columns: {file: file, start: begin_s, end: end_s, label: species}
+  #   segment_s: 5.0
+  #   min_event_overlap_s: 0.5

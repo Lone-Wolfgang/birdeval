@@ -1,0 +1,5 @@
+# old scientific name: name used in your eval sets
+# Add entries when a run reports uncovered classes that a model does know
+# under a different name (splits, lumps, genus moves between taxonomy versions).
+# Example:
+# "Regulus calendula": "Corthylio calendula"

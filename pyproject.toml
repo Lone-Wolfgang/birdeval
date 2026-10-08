@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "birdeval"
+version = "0.1.0"
+description = "Swap-in eval harness for bird sound classifiers (BirdNET 2.4/3.0, Perch V2) across eval sets"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "pandas",
+  "pyarrow",
+  "scikit-learn",
+  "pyyaml",
+  "soundfile",
+]
+
+[project.optional-dependencies]
+# BirdNET 2.4 (tf) + 3.0 (onnx). Perch V2 additionally needs TensorFlow >= 2.20.
+models = ["birdnet[onnx]>=1.1"]
+perch = ["birdnet>=1.1", "tensorflow>=2.20"]
+# BirdSet uses a HF loading script; datasets 4.x removed script support.
+birdset = ["datasets>=2.19,<4"]
+dev = ["pytest"]
+
+[project.scripts]
+birdeval = "birdeval.runner:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

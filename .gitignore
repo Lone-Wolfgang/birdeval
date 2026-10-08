@@ -1,0 +1,7 @@
+cache/
+results/
+__pycache__/
+*.egg-info/
+configs/taxonomy/ebird_taxonomy.csv
+.venv/
+.DS_Store
