@@ -56,6 +56,14 @@ class EvalSet:
                     f"EvalSet {self.name!r} has {col} outside its class list: {sorted(unknown)[:10]}"
                 )
 
+    def time_reviewed(self) -> np.ndarray:
+        """Per segment: False if the segment is unreviewed for every class
+        (unreviewed *time*, e.g. soundscape audio no labelled clip covers)."""
+        if "unreviewed" not in self.segments:
+            return np.ones(len(self.segments), bool)
+        all_classes = set(self.classes)
+        return np.array([not all_classes <= set(u) for u in self.segments["unreviewed"]])
+
     def groups(self) -> np.ndarray:
         """Bootstrap group per segment: site, else source recording, else file.
 

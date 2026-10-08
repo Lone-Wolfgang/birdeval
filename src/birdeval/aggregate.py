@@ -4,10 +4,16 @@ A *unit* is what a presence claim is about: a whole file (unit_s = None), or
 fixed-length chunks of it (unit_s = 60, 300, ...) to match a deployment's
 recording length.
 
-Ground truth per (unit, species), from the segment labels:
+Units are trimmed to reviewed time: segments unreviewed for every species
+(e.g. soundscape audio no labelled clip covers) are left out, so a short
+unreviewed tail doesn't make every absent species unknown for the whole
+recording. A unit is the list of reviewed spans it covers.
+
+Ground truth per (unit, species), from the reviewed segments:
     1   any segment in the unit is present
     0   every segment in the unit is absent
-   -1   no present segment and at least one unreviewed one (excluded from metrics)
+   -1   no present segment and at least one unreviewed for this species
+        (species-level review gaps; excluded from metrics)
 A segment belongs to the unit containing its midpoint.
 
 Features come from the scored model windows, not the aligned segment matrix,
@@ -34,7 +40,7 @@ FEATURES = ("max_score", "top3_mean", "n_above")
 class UnitScores:
     """Per-(unit, class) features over an eval set's classes. Arrays are [n_units, n_classes]."""
 
-    units: pd.DataFrame  # unit, file, start, end, duration_s, n_windows, group
+    units: pd.DataFrame  # unit, file, start, end, group, spans, duration_s, n_windows
     classes: list[str]
     covered: np.ndarray  # [n_classes] bool: the model can score this class
     max_score: np.ndarray
@@ -45,39 +51,54 @@ class UnitScores:
 
 
 def make_units(ev: EvalSet, unit_s: float | None = None) -> tuple[pd.DataFrame, np.ndarray]:
-    """Return (units table, unit index of every segment).
+    """Return (units table, unit index of every segment; -1 = unreviewed time).
 
     Each unit's bootstrap `group` is its first segment's EvalSet.groups()
     value, so chunks (unit_s) of one recording are always resampled together.
+    `duration_s` is the reviewed time in the unit.
     """
     seg = ev.segments
     seg_group = ev.groups()
+    reviewed = ev.time_reviewed()
     mid = (seg["start"].to_numpy() + seg["end"].to_numpy()) / 2
-    rows, seg_unit = [], np.empty(len(seg), dtype=int)
-    for file, g in seg.groupby("file", sort=True):
-        lo, hi = float(g["start"].min()), float(g["end"].max())
+    rows, seg_unit = [], np.full(len(seg), -1, dtype=int)
+    for file, g in seg[reviewed].groupby("file", sort=True):
+        lo = float(g["start"].min())
         group = seg_group[g.index[0]]
-        if unit_s is None:
-            seg_unit[g.index] = len(rows)
-            rows.append((file, lo, hi, group))
-            continue
-        k = np.floor((mid[g.index] - lo) / unit_s).astype(int)
-        for j in np.unique(k):  # chunks with no labelled segment are skipped
-            seg_unit[g.index[k == j]] = len(rows)
-            rows.append((file, lo + j * unit_s, min(lo + (j + 1) * unit_s, hi), group))
-    units = pd.DataFrame(rows, columns=["file", "start", "end", "group"])
+        k = np.zeros(len(g), int) if unit_s is None else np.floor((mid[g.index] - lo) / unit_s).astype(int)
+        for j in np.unique(k):  # chunks with no reviewed segment are skipped
+            members = g[k == j]
+            seg_unit[members.index] = len(rows)
+            spans = _merge(members["start"].to_numpy(), members["end"].to_numpy())
+            rows.append((file, spans[0][0], spans[-1][1], group, spans))
+    units = pd.DataFrame(rows, columns=["file", "start", "end", "group", "spans"])
     units.insert(0, "unit", [f"{Path(f).name}@{s:g}" for f, s in zip(units.file, units.start)])
-    units["duration_s"] = units["end"] - units["start"]
+    units["duration_s"] = [sum(e - s for s, e in sp) for sp in units["spans"]]
     return units, seg_unit
 
 
+def _merge(starts: np.ndarray, ends: np.ndarray) -> list[tuple[float, float]]:
+    """Sorted, merged (start, end) spans."""
+    out: list[list[float]] = []
+    for s, e in sorted(zip(starts.tolist(), ends.tolist())):
+        if out and s <= out[-1][1] + 1e-9:
+            out[-1][1] = max(out[-1][1], e)
+        else:
+            out.append([s, e])
+    return [(s, e) for s, e in out]
+
+
 def unit_truth(y: np.ndarray, seg_unit: np.ndarray, n_units: int) -> np.ndarray:
-    """Collapse three-state segment truth [n_seg, C] to unit truth [n_units, C]."""
+    """Collapse three-state segment truth [n_seg, C] to unit truth [n_units, C].
+
+    Segments with seg_unit == -1 (unreviewed time, outside every unit) are ignored.
+    """
     t = np.zeros((n_units, y.shape[1]), np.int8)
     any_pos = np.zeros_like(t, dtype=bool)
     any_unk = np.zeros_like(t, dtype=bool)
-    np.logical_or.at(any_pos, seg_unit, y == 1)
-    np.logical_or.at(any_unk, seg_unit, y == -1)
+    keep = seg_unit >= 0
+    np.logical_or.at(any_pos, seg_unit[keep], y[keep] == 1)
+    np.logical_or.at(any_unk, seg_unit[keep], y[keep] == -1)
     t[any_unk] = -1
     t[any_pos] = 1
     return t
@@ -103,14 +124,14 @@ def aggregate(
     n_win = np.zeros(U, np.int32)
     covered = np.zeros(C, bool)
 
-    for u, (file, s, e) in enumerate(zip(units.file, units.start, units.end)):
+    for u, (file, spans) in enumerate(zip(units.file, units.spans)):
         ws = windows[file]
         mcols = [j for j, c in enumerate(ws.classes) if c in cidx]
         ecols = [cidx[ws.classes[j]] for j in mcols]
         covered[ecols] = True
         if not mcols or len(ws.starts) == 0:
             continue
-        inside = np.flatnonzero(window_hits(ws.starts, ws.ends, [(s, e)], rule, min_overlap_s))
+        inside = np.flatnonzero(window_hits(ws.starts, ws.ends, spans, rule, min_overlap_s))
         n_win[u] = len(inside)
         if not len(inside):
             continue

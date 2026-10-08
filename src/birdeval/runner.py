@@ -117,7 +117,14 @@ def recording_level(ev, y, units, T, windows, scopes, rec, align_cfg, method, n_
     rule = {"rule": align_cfg["rule"], "min_overlap_s": align_cfg["min_overlap_s"]}  # same rule as segments
     us = aggregate(ev, windows, units, tau=rec["tau"], floor=scoring.floor(method), **rule)
     E = evidence_truth(ev, y, us, **rule)
-    out, headline = {"units": {"unit_s": rec["unit_s"], "n_units": len(units)}, "config": rec}, {}
+    seg_s = (ev.segments["end"] - ev.segments["start"]).to_numpy()
+    out = {
+        "units": {"unit_s": rec["unit_s"], "n_units": len(units),
+                  "reviewed_s": float(units["duration_s"].sum()),
+                  "unreviewed_time_trimmed_s": float(seg_s[~ev.time_reviewed()].sum())},
+        "config": rec,
+    }
+    headline = {}
     for scope, mask in scopes:
         r = recording_metrics.compute(
             T, us.max_score, units["duration_s"].to_numpy(), units["group"].to_numpy(), restrict=mask,
