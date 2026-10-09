@@ -1,0 +1,48 @@
+# Published BirdSet test results, per site, for scripts/compare_published.py.
+# Values transcribed from the papers' tables (2026-10-09). All are on BirdSet's
+# test_5s clips with every class of the site scored, which matches birdeval's
+# clips mode (birdset_<SITE>) in the `all` scope.
+
+sources:
+  perch2:
+    cite: "van Merriënboer et al. 2025, Perch 2.0: The Bittern Lesson for Bioacoustics, arXiv:2508.04665, Appendix C, Table 4"
+    protocol: "prototype classifier head used directly, no fine-tuning; POW not reported (BirdSet's validation set)"
+    models:
+      "Perch 2.0 - Phase I":
+        AUROC: {PER: 0.783, NES: 0.948, UHH: 0.896, HSN: 0.896, NBP: 0.941, SSW: 0.968, SNE: 0.885}
+        cmAP:  {PER: 0.230, NES: 0.396, UHH: 0.368, HSN: 0.522, NBP: 0.682, SSW: 0.464, SNE: 0.351}
+        top1:  {PER: 0.534, NES: 0.537, UHH: 0.539, HSN: 0.629, NBP: 0.703, SSW: 0.778, SNE: 0.776}
+      "Perch 2.0 - Peak-Select":
+        AUROC: {PER: 0.802, NES: 0.948, UHH: 0.901, HSN: 0.896, NBP: 0.941, SSW: 0.974, SNE: 0.887}
+        cmAP:  {PER: 0.255, NES: 0.382, UHH: 0.375, HSN: 0.504, NBP: 0.695, SSW: 0.455, SNE: 0.342}
+        top1:  {PER: 0.528, NES: 0.504, UHH: 0.462, HSN: 0.620, NBP: 0.677, SSW: 0.782, SNE: 0.763}
+      "Perch 2.0 - Random":
+        AUROC: {PER: 0.786, NES: 0.953, UHH: 0.912, HSN: 0.915, NBP: 0.933, SSW: 0.973, SNE: 0.883}
+        cmAP:  {PER: 0.232, NES: 0.403, UHH: 0.380, HSN: 0.533, NBP: 0.661, SSW: 0.469, SNE: 0.341}
+        top1:  {PER: 0.535, NES: 0.562, UHH: 0.595, HSN: 0.659, NBP: 0.724, SSW: 0.789, SNE: 0.791}
+
+  birdset:
+    cite: "Rauch et al. 2025, BirdSet, ICLR 2025, arXiv:2403.10380, Table 3 (LT on XCL)"
+    protocol: "logits restricted to species in the test datasets; trained baselines are means over 3 seeds"
+    models:
+      "Perch 1.0":
+        AUROC: {POW: 0.84, PER: 0.70, NES: 0.90, UHH: 0.76, HSN: 0.86, NBP: 0.91, SSW: 0.91, SNE: 0.83}
+        cmAP:  {POW: 0.30, PER: 0.18, NES: 0.39, UHH: 0.27, HSN: 0.45, NBP: 0.63, SSW: 0.28, SNE: 0.29}
+        top1:  {POW: 0.85, PER: 0.48, NES: 0.66, UHH: 0.57, HSN: 0.58, NBP: 0.69, SSW: 0.62, SNE: 0.69}
+      "EfficientNet (LT)":
+        AUROC: {POW: 0.82, PER: 0.71, NES: 0.88, UHH: 0.78, HSN: 0.86, NBP: 0.90, SSW: 0.91, SNE: 0.83}
+        cmAP:  {POW: 0.35, PER: 0.17, NES: 0.30, UHH: 0.23, HSN: 0.35, NBP: 0.57, SSW: 0.33, SNE: 0.28}
+        top1:  {POW: 0.80, PER: 0.38, NES: 0.49, UHH: 0.42, HSN: 0.59, NBP: 0.63, SSW: 0.55, SNE: 0.67}
+      "ConvNeXt (LT)":
+        AUROC: {POW: 0.82, PER: 0.72, NES: 0.88, UHH: 0.79, HSN: 0.89, NBP: 0.92, SSW: 0.93, SNE: 0.83}
+        cmAP:  {POW: 0.36, PER: 0.19, NES: 0.34, UHH: 0.26, HSN: 0.47, NBP: 0.62, SSW: 0.35, SNE: 0.30}
+        top1:  {POW: 0.75, PER: 0.36, NES: 0.45, UHH: 0.44, HSN: 0.52, NBP: 0.64, SSW: 0.53, SNE: 0.65}
+
+# Which published rows each birdeval model is checked against. The result
+# should fall inside their range (± tolerance). Models not listed have no
+# published per-site figures (BirdNET: BirdSet excluded it for possible test
+# leakage) and are shown against the context rows only, unflagged.
+targets:
+  perch_v2: ["perch2/Perch 2.0 - Phase I", "perch2/Perch 2.0 - Peak-Select", "perch2/Perch 2.0 - Random"]
+
+context: ["birdset/Perch 1.0", "birdset/EfficientNet (LT)", "birdset/ConvNeXt (LT)"]

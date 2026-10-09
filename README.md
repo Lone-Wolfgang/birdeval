@@ -59,6 +59,52 @@ soundscape set:** its 539 "recordings" are about 5 s each, and only 52% of
 segments agree. Recording lengths differ by site: POW 300 s, HSN 600 s,
 UHH 60–540 s, NES/PER/SNE/SSW 1 h.
 
+### Checking against published figures
+
+```bash
+python -I scripts/compare_published.py results/taxfix_v1
+```
+
+This compares clip-mode rows (`birdset_<SITE>`, scope `all`, which is
+BirdSet's protocol) with the per-site values in
+`configs/reference/published.yaml`, and writes
+`results/published_comparison.csv`. It and `build_report.py` read each
+pair's `summary.json`, so they also work on a run stopped before it wrote
+`summary.csv`.
+- **Perch V2** is checked against the three Perch 2.0 variants in the Perch 2.0
+  paper (App. C, Table 4: HSN and SNE, no POW). A value more than `--tol`
+  (0.02) outside their range is flagged.
+- **BirdNET** has no published per-site figures. BirdSet excluded it for
+  possible test-data leakage, so BirdNET results on BirdSet may be optimistic.
+- Context rows (Perch 1.0 and two BirdSet baselines) give scale only.
+
+Taxonomy mismatches pull the `all` scope down: an uncovered class scores
+AUROC 0.5. Before `synonyms.yaml` had its current entries, Perch V2 was
+0.01–0.02 below the published cmAP and AUROC on HSN and SNE, and its
+`covered` scope fell inside the published range.
+
+### Report
+
+```bash
+python -I scripts/build_report.py results/taxfix_v1      # tables -> results/report/*.csv
+python -I scripts/render_report.py                         # page   -> results/report/index.html
+```
+
+This writes the report's tables to `results/report/`:
+- `headline.csv`: models × sites.
+- `published.csv`: the published-figure check.
+- `by_abundance.csv`: mean per-species AP by labelled-clip count. The bins
+  (1–9, 10–49, 50+) were fixed in advance.
+- `by_habitat.csv`: mean per-species AP by AVONET primary habitat (Tobias et
+  al. 2022, *Ecology Letters* 25:581, CC BY 4.0). This file is written only
+  when `configs/reference/species_traits.csv` exists. To build that file,
+  download `ELEData.zip` in a browser from https://figshare.com/s/b990722d72a26b5bfead
+  (Figshare blocks scripted downloads) and run
+  `python -I scripts/avonet_traits.py ELEData.zip`. This needs the `report` extra.
+
+A group's unit is a (site, species) pair, and its 95% interval comes from
+resampling those pairs. The report page shows these CSVs.
+
 ## How it works
 
 ```
@@ -172,7 +218,7 @@ stopped: just run the same command again.
 ## Outputs
 
 ```
-results/<run>/summary.csv                     one row per model × evalset × scope (segment + rec_* columns)
+results/<run>/summary.csv                     one row per model × evalset × scope (segment + rec_* columns); rewritten after each eval set
 results/<run>/<evalset>/<model>/summary.json  segment metrics, CI, coverage, model / scoring / alignment config
 results/<run>/<evalset>/<model>/per_class_<scope>.csv
 results/<run>/<evalset>/<model>/uncovered_classes.txt
