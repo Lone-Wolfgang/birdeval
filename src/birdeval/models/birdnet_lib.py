@@ -147,7 +147,7 @@ class BirdNETLibModel(ModelAdapter):
         missing = set(files) - set(out)
         for f in missing:  # unreadable / too-short files
             log.warning("%s produced no output for %s", self.name, f)
-            out[f] = _empty(f, canon)
+            out[f] = _empty(f, list(dict.fromkeys(canon)))
         return out
 
     def _convert(self, res, native: list[str], canon: list[str]) -> dict[str, WindowScores]:
@@ -181,6 +181,11 @@ def _densify(res, native: list[str], canon: list[str]) -> dict[str, WindowScores
     seg_len = float(res.segment_duration_s)
     # map model species index -> our column (-1 if outside the restricted list)
     lut = np.array([col.get(str(n), -1) for n in names])
+    # Several native labels can share a canonical class (BirdNET 3.0's
+    # Setophaga aestiva and petechia both map to the eBird slash
+    # "aestiva/petechia"); such columns merge by max, so each class appears once.
+    classes = list(dict.fromkeys(canon))
+    merge = np.array([classes.index(c) for c in canon])
 
     out = {}
     for fi, path in enumerate(res.inputs):
@@ -195,6 +200,10 @@ def _densify(res, native: list[str], canon: list[str]) -> dict[str, WindowScores
         starts = np.flatnonzero(valid_seg) * hop
         dur = float(res.input_durations[fi])
         ends = np.minimum(starts + seg_len, dur)
+        if len(classes) < len(canon):
+            merged = np.full((n, len(classes)), -np.inf, np.float32)
+            np.maximum.at(merged, (slice(None), merge), dense)
+            dense = merged
         key = str(Path(str(path)).resolve())
-        out[key] = WindowScores(key, starts, ends, dense, list(canon))
+        out[key] = WindowScores(key, starts, ends, dense, classes)
     return out

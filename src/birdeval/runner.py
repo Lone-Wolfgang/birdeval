@@ -184,7 +184,7 @@ def evaluate(
     rec = {**REC_DEFAULTS, **(cfg.get("recording_level") or {})}
 
     models = models or {m: build_model(m, cfg["models"][m], tax) for m in model_names}
-    rows = []
+    rows, table = [], pd.DataFrame()
     for e in evalset_names:
         ev = build_evalset(e, cfg["evalsets"][e], tax) if isinstance(e, str) else e
         y = ev.target_matrix()
@@ -228,10 +228,11 @@ def evaluate(
             missing = [c for c, ok in zip(ev.classes, covered[name]) if not ok]
             (d / "uncovered_classes.txt").write_text("\n".join(missing))
             (d / "summary.json").write_text(json.dumps(result, indent=2, default=str))
+        # rewritten after every eval set, so a stopped run keeps what finished
+        table = pd.DataFrame(rows)
+        out_root.mkdir(parents=True, exist_ok=True)
+        table.to_csv(out_root / "summary.csv", index=False)
 
-    table = pd.DataFrame(rows)
-    out_root.mkdir(parents=True, exist_ok=True)
-    table.to_csv(out_root / "summary.csv", index=False)
     log.info("Results written to %s", out_root)
     return table
 

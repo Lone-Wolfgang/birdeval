@@ -47,6 +47,16 @@ def test_score_space_changes_cache_key():
     assert m.cache_key() != old.cache_key()
 
 
+def test_synonyms_change_cache_key(tmp_path):
+    # A synonym makes more native labels count for the eval classes, so the
+    # cached logits must not be reused.
+    syn = tmp_path / "synonyms.yaml"
+    syn.write_text('"Dryobates villosus": "Leuconotopicus villosus"\n')
+    plain = BirdNETLibModel("m", Taxonomy(), version="2.4")
+    mapped = BirdNETLibModel("m", Taxonomy(synonyms_yaml=syn), version="2.4")
+    assert plain.cache_key() != mapped.cache_key()
+    assert "synonyms" not in plain.version_info()
+
 def test_logit_and_sigmoid_give_identical_ranking_metrics(toy, tmp_path):
     _, tax, ev = toy
     m = FakeModel("noisy", tax, SPECIES, noise=0.6, seed=3)

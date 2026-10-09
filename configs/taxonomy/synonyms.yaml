@@ -3,3 +3,18 @@
 # under a different name (splits, lumps, genus moves between taxonomy versions).
 # Example:
 # "Regulus calendula": "Corthylio calendula"
+
+# The models predate the 2025 eBird taxonomy that BirdSet codes resolve to.
+# Genus moves:
+"Coccothraustes vespertinus": "Hesperiphona vespertina"     # Evening Grosbeak
+"Dryobates albolarvatus": "Leuconotopicus albolarvatus"     # White-headed Woodpecker
+"Dryobates villosus": "Leuconotopicus villosus"             # Hairy Woodpecker
+# Splits, where BirdSet's code now resolves to the eBird slash or group taxon.
+# Keys like "Vireo gilvus" are also current eBird names: an eval set labelled
+# with the post-split species would be merged into the slash (none of
+# POW/HSN/SNE are).
+"Setophaga petechia": "Setophaga aestiva/petechia"          # Yellow Warbler (2.4, Perch V2)
+"Setophaga aestiva": "Setophaga aestiva/petechia"           # American Yellow Warbler (3.0)
+"Vireo gilvus": "Vireo gilvus/swainsoni"                    # Warbling Vireo
+# Lump: BirdSet's code is the Pacific-slope group of Empidonax difficilis.
+"Empidonax difficilis": "Empidonax difficilis [difficilis group]"

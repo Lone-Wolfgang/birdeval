@@ -46,7 +46,13 @@ class ModelAdapter(ABC):
 
     def version_info(self) -> dict:
         """Anything that changes outputs. Goes into the cache key and the run record."""
-        return {"adapter": type(self).__name__, **self.params}
+        info = {"adapter": type(self).__name__, **self.params}
+        # Synonyms decide which native labels are predicted for the eval
+        # classes, and so what gets cached; the eval vocab alone misses that.
+        if self.taxonomy.synonyms:
+            blob = json.dumps(sorted(self.taxonomy.synonyms.items()))
+            info["synonyms"] = hashlib.sha1(blob.encode()).hexdigest()[:10]
+        return info
 
     def cache_key(self) -> str:
         blob = json.dumps(self.version_info(), sort_keys=True, default=str)
