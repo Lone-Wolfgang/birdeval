@@ -158,6 +158,10 @@ Every result is reported three ways:
 `uncovered_classes.txt` per model lists what fell through. Check it after the
 first run: entries there that the model *should* know are taxonomy mismatches
 to add to `synonyms.yaml`.
+`synonyms.yaml` also maps retired eBird codes that BirdSet still uses (keys
+like `runwre1`). With the current entries, every model covers every BirdSet
+test class except four for BirdNET 2.4, which lacks those species: Campylorhynchus
+capistratus and two Saucerottia hummingbirds (NES), and Curruca cantillans (NBP).
 
 ## Recording-level results
 

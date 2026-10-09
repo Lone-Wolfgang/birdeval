@@ -22,6 +22,17 @@ def test_taxonomy_normalisation():
     assert t.from_sci("  Turdus   Merula ") == "turdus merula"
 
 
+def test_retired_ebird_code_maps_through_synonyms(tmp_path):
+    csv = tmp_path / "ebird.csv"
+    csv.write_text("SPECIES_CODE,SCI_NAME\neurbla,Turdus merula\n")
+    syn = tmp_path / "syn.yaml"
+    syn.write_text('"oldcode1": "Turdus merula"\n')
+    t = Taxonomy(ebird_csv=csv, synonyms_yaml=syn)
+    assert t.from_ebird("eurbla") == "turdus merula"
+    assert t.from_ebird("oldcode1") == "turdus merula"
+    assert t.from_ebird("nosuch") is None
+
+
 def test_evalset_grid(toy):
     _, _, ev = toy
     assert len(ev.segments) == 6 * 6  # 30 s / 5 s

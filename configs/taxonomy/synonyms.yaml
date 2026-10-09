@@ -18,3 +18,18 @@
 "Vireo gilvus": "Vireo gilvus/swainsoni"                    # Warbling Vireo
 # Lump: BirdSet's code is the Pacific-slope group of Empidonax difficilis.
 "Empidonax difficilis": "Empidonax difficilis [difficilis group]"
+
+# PER, NES, NBP, SSW (2025 eBird names; checked against each model's labels).
+# Retired eBird codes BirdSet still uses, mapped to the current species:
+"runwre1": "Campylorhynchus capistratus"                   # Rufous-naped Wren, split 2025; NES birds are Rufous-backed Wren
+"wegspa1": "Melozone leucotis"                             # White-eared Ground-Sparrow (now whegrs2)
+# Genus moves:
+"Dryobates passerinus": "Veniliornis passerinus"           # Little Woodpecker
+"Accipiter cooperii": "Astur cooperii"                     # Cooper's Hawk (2.4)
+"Psilorhinus morio": "Cyanocorax morio"                    # Brown Jay (2.4)
+"Milvago chimachima": "Daptrius chimachima"                # Yellow-headed Caracara (2.4)
+# Lump: BirdSet's code is the grammicus group of Waved Woodpecker.
+"Celeus undatus": "Celeus undatus [grammicus group]"       # Waved Woodpecker (3.0, Perch V2)
+"Celeus grammicus": "Celeus undatus [grammicus group]"     # Scale-breasted Woodpecker (2.4, 3.0)
+# Not mapped: BirdNET 2.4 lacks Campylorhynchus capistratus, Curruca cantillans
+# and the Saucerottia hummingbirds; its nearest labels are different species.

@@ -66,7 +66,8 @@ class Taxonomy:
         return self._resolve(label.split("_", 1)[0])
 
     def from_ebird(self, code: str) -> str | None:
-        sci = self.code_to_sci.get(code.strip())
+        # codes retired from the eBird CSV (splits) can be mapped in the synonyms file
+        sci = self.code_to_sci.get(code.strip()) or self.synonyms.get(normalize_sci(code))
         return self._resolve(sci) if sci else None
 
     def map_many(self, labels: list[str], kind: str) -> tuple[list[str | None], list[str]]:
