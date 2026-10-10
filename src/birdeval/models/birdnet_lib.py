@@ -48,7 +48,10 @@ class BirdNETLibModel(ModelAdapter):
         segment_size_s: float | None = None,  # 3.0 only
         batch_size: int = 16,
         n_workers: int | None = None,
-        files_per_call: int = 50,
+        # Each predict() call leaves a few POSIX semaphores behind until the
+        # process exits; macOS allows 10,000 (kern.posix.sem.max), and SSW at
+        # 50 files per call hit it with "No space left on device".
+        files_per_call: int = 2000,
     ) -> None:
         super().__init__(
             name,
