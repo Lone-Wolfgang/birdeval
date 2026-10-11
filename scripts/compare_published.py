@@ -57,6 +57,7 @@ def load_summaries(run_dirs: list[Path]) -> pd.DataFrame:
                     **{k: m[k] for k in ("cmAP", "AUROC", "top1", "n_segments", "n_classes_scored")},
                     "cmAP_lo": lo, "cmAP_hi": hi,
                     "rec_cmAP": rec.get(scope, {}).get("cmAP", float("nan")),
+                    "rec_recall90": rec.get(scope, {}).get("targets", {}).get("0.9", {}).get("recall", float("nan")),
                 })
     return pd.DataFrame(rows)
 

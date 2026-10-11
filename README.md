@@ -86,24 +86,54 @@ AUROC 0.5. Before `synonyms.yaml` had its current entries, Perch V2 was
 ### Report
 
 ```bash
-python -I scripts/build_report.py results/taxfix_v1      # tables -> results/report/*.csv
-python -I scripts/render_report.py                         # page   -> results/report/index.html
+python -I scripts/build_report.py results/taxfix_v1 results/full_*   # tables -> results/report/*.csv
+python -I scripts/render_report.py                                  # page   -> results/report/index.html
 ```
 
-This writes the report's tables to `results/report/`:
-- `headline.csv`: models × sites.
+This writes the report's tables to `results/report/`. Clips and soundscape
+runs are both read; if two runs hold the same (mode, site, model), the later
+one wins.
+- `headline.csv`: mode × site × model, plus an `All` row per mode. That row
+  is the mean of the per-site values over the sites every model has
+  finished.
 - `published.csv`: the published-figure check.
-- `by_abundance.csv`: mean per-species AP by labelled-clip count. The bins
-  (1–9, 10–49, 50+) were fixed in advance.
-- `by_habitat.csv`: mean per-species AP by AVONET primary habitat (Tobias et
-  al. 2022, *Ecology Letters* 25:581, CC BY 4.0). This file is written only
-  when `configs/reference/species_traits.csv` exists. To build that file,
-  download `ELEData.zip` in a browser from https://figshare.com/s/b990722d72a26b5bfead
-  (Figshare blocks scripted downloads) and run
-  `python -I scripts/avonet_traits.py ELEData.zip`. This needs the `report` extra.
+- `species.csv`: one row per mode × site × species. Each row has the
+  positives count, the species' AVONET traits, the site biome, and each
+  model's AP, AUROC and recall at 90% precision. Soundscape rows add
+  recording-level AP.
+- `groups.csv`: mean per-species AP per mode × scope × grouping.
+  - Scope is all sites, or one site.
+  - Grouping is AVONET primary habitat, site biome, or prevalence.
+  - The prevalence bins (1–9, 10–49, 50+ labelled segments) were fixed in
+    advance.
+
+The habitat and family columns need `configs/reference/species_traits.csv`,
+from AVONET (Tobias et al. 2022, *Ecology Letters* 25:581, CC BY 4.0).
+To build it:
+1. Download `ELEData.zip` in a browser from
+   https://figshare.com/s/b990722d72a26b5bfead. Figshare blocks scripted
+   downloads.
+2. Run `python -I scripts/avonet_traits.py ELEData.zip`. This needs the
+   `report` extra.
+
+Site names and WWF biomes are in `configs/reference/sites.csv`.
 
 A group's unit is a (site, species) pair, and its 95% interval comes from
-resampling those pairs. The report page shows these CSVs.
+resampling those pairs. Groups use only sites that every model has finished,
+so the models are compared on the same pairs.
+
+The page has a static summary and published check. Below them is an
+explorer with three controls:
+- Mode: clips or soundscapes.
+- Dataset: all sites, or one site.
+- View: overview, habitat, site biome, prevalence or species.
+
+Every table sorts when you click a column heading. The species table also
+has:
+- A metric picker.
+- A model-vs-model difference column.
+- A search box.
+- A filter for species with fewer than 10 positives. It is on by default.
 
 ## How it works
 
