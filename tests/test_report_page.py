@@ -127,3 +127,60 @@ def test_render_fails_on_unknown_token(tmp_path):
     (content / "sections" / "conclusion.html").write_text("<p>{{no_such_fact}}</p>")
     r = render(FIXTURE, tmp_path / "x.html", "--content", str(content))
     assert r.returncode != 0 and "no_such_fact" in r.stderr and not (tmp_path / "x.html").exists()
+
+
+# ---- report tables (scripts/build_report.py) ----------------------------------------------
+
+import json  # noqa: E402
+
+import build_report as br  # noqa: E402
+
+
+def test_weakest_rule():
+    sp = pd.DataFrame({
+        "mode": ["clips"] * 5 + ["scape"],
+        "site": ["A", "A", "B", "B", "C", "A"],
+        "species": ["s1", "s2", "s3", "s4", "s5", "s1"],
+        "n_pos": [50, 9, 12, 10, 30, 50],      # s2 has too few positives
+        "ap_m1": [0.30, 0.01, 0.50, 0.05, 0.20, 0.0],
+        "ap_m2": [0.10, 0.02, 0.05, 0.40, 0.25, 0.0],
+    })
+    w = br.weakest(sp, n=3, min_pos=10)
+    assert list(w["species"]) == ["s5", "s1", "s4"]  # ranked by max over models: 0.25, 0.30, 0.40
+    assert list(w["max_ap"]) == [0.25, 0.30, 0.40]
+    assert "s2" not in set(w["species"]) and (w["n_pos"] >= 10).all()
+
+
+def _pair(run: Path, evalset: str, model: str, evidence: float | None):
+    d = run / evalset / model
+    d.mkdir(parents=True)
+    scope = {"cmAP": 0.5, "AUROC": 0.9, "top1": 0.7, "n_segments": 10, "n_classes_scored": 3, "cmAP_ci95": [0.4, 0.6]}
+    (d / "summary.json").write_text(json.dumps({"evalset": evalset, "model": model, "all": scope,
+                                                "covered": scope, "shared": scope}))
+    t90 = {"recall": 0.4}
+    if evidence is not None:
+        t90 |= {"evidence_precision": evidence, "conditional_evidence_precision": evidence + 0.1}
+    rl = {s: {"cmAP": 0.6, "targets": {"0.9": t90}} for s in ("all", "covered", "shared")}
+    (d / "recording_level.json").write_text(json.dumps(rl))
+
+
+def test_evidence_columns_for_soundscapes_only(tmp_path):
+    run = tmp_path / "run"
+    _pair(run, "birdset_HSN", "m", 0.9)          # clips also carry evidence in recording_level.json
+    _pair(run, "birdset_HSN_scape", "m", 0.8)
+    h = br.headline(br.summaries([run]))
+    scape = h[(h["mode"] == "scape") & (h.site == "HSN")].iloc[0]
+    clips = h[(h["mode"] == "clips") & (h.site == "HSN")].iloc[0]
+    assert scape["rec_evidence90"] == 0.8 and scape["rec_evidence90_cond"] == pytest.approx(0.9)
+    assert pd.isna(clips["rec_evidence90"]) and pd.isna(clips["rec_evidence90_cond"])
+    all_scape = h[(h["mode"] == "scape") & (h.site == "All")].iloc[0]
+    assert all_scape["rec_evidence90"] == 0.8
+
+
+def test_nonpublic_evalsets_skipped(tmp_path, capsys):
+    run = tmp_path / "run"
+    _pair(run, "birdset_HSN_scape", "m", 0.8)
+    _pair(run, "ourdata_scape", "m", 0.8)
+    s = br.summaries([run])
+    assert set(s["evalset"]) == {"birdset_HSN_scape"} and "ourdata_scape" in capsys.readouterr().out
+    assert "ourdata_scape" in set(br.summaries([run], allow_nonpublic=True)["evalset"])

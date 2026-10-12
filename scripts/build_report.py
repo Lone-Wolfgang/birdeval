@@ -5,7 +5,9 @@ per-species results that the page groups, filters and sorts.
 
 Writes CSVs to --out:
   headline.csv  mode x site x model: segment cmAP (95% CI), AUROC, top-1, and
-                for soundscapes recording-level cmAP and recall at 90% precision.
+                for soundscapes recording-level cmAP, recall at 90% precision and
+                evidence precision at that threshold (all claims, and claims right
+                at recording level).
                 Site "All" is the mean over sites that every model has finished.
   published.csv Perch V2 against the Perch 2.0 paper (scripts/compare_published.py)
   species.csv   one row per mode x site x species: n_pos, each model's AP,
@@ -14,6 +16,9 @@ Writes CSVs to --out:
                 (see species_info)
   groups.csv    mean per-species AP per mode x scope (All or one site) x
                 grouping x group x model; groupings are in GROUPINGS
+  weakest.csv   the WEAKEST_N clips-mode (site, species) pairs with at least
+                WEAKEST_MIN_POS labelled segments, ranked by the best AP any model
+                gets (low = every model struggles). Rule fixed before looking.
 
 Species information comes from configs/ (each is optional except AVONET):
   taxonomy/ebird_taxonomy.csv     common name, eBird code
@@ -74,6 +79,7 @@ GROUPINGS = {
     "call_freq": ("freq_centre_khz", FREQ),
     "xc": ("xc_total", XC),
 }
+WEAKEST_N, WEAKEST_MIN_POS = 20, 10
 MIN_GROUP = 5  # categories with fewer (site, species) pairs merge into "Other"
 KEY = ["mode", "site", "model"]
 
@@ -101,13 +107,15 @@ def summaries(runs: list[Path], allow_nonpublic: bool = False) -> pd.DataFrame:
     df = df[public_only(df["evalset"], allow_nonpublic)].copy()
     df[["site", "mode"]] = site_mode(df["evalset"])
     df = df[df["site"].notna() & (df["classes"] == "all")].copy()
-    # in clips mode each clip is its own recording unit, so recording cmAP repeats cmAP
-    df.loc[df["mode"] == "clips", "rec_cmAP"] = np.nan
+    # in clips mode each clip is its own recording unit, so recording cmAP repeats cmAP;
+    # evidence precision is a soundscape question (which window in a recording)
+    df.loc[df["mode"] == "clips", ["rec_cmAP", "rec_evidence90", "rec_evidence90_cond"]] = np.nan
     return df.drop_duplicates(KEY, keep="last")
 
 
 def headline(s: pd.DataFrame) -> pd.DataFrame:
-    cols = ["cmAP", "cmAP_lo", "cmAP_hi", "AUROC", "top1", "rec_cmAP", "rec_recall90"]
+    cols = ["cmAP", "cmAP_lo", "cmAP_hi", "AUROC", "top1", "rec_cmAP", "rec_recall90",
+            "rec_evidence90", "rec_evidence90_cond"]
     out = s[KEY + ["evalset"] + cols + ["n_classes_scored", "n_segments"]].rename(
         columns={"n_classes_scored": "n_species", "n_segments": "n_segs"})
     rows = []
@@ -198,6 +206,15 @@ def species_table(pc: pd.DataFrame, info: pd.DataFrame) -> pd.DataFrame:
     return out.sort_values(idx).round(4)
 
 
+def weakest(species: pd.DataFrame, n: int = WEAKEST_N, min_pos: int = WEAKEST_MIN_POS) -> pd.DataFrame:
+    """Clips mode, scope all: the (site, species) pairs where even the best model's AP is lowest."""
+    c = species[(species["mode"] == "clips") & (species["n_pos"] >= min_pos)].copy()
+    aps = [col for col in c.columns if col.startswith("ap_")]
+    c["max_ap"] = c[aps].max(axis=1)
+    keep = ["site", "species", "common_name", "ebird_code", "family", "habitat", "n_pos", "xc_total", *aps, "max_ap"]
+    return c.sort_values(["max_ap", "site", "species"])[[k for k in keep if k in c]].head(n).reset_index(drop=True)
+
+
 def grouped(pc: pd.DataFrame, group: pd.Series, order: list[str], n_boot: int = 2000) -> pd.DataFrame:
     """Mean AP per (model, group) over (site, species) pairs, CI by resampling pairs."""
     pc = pc.assign(group=group)
@@ -278,7 +295,9 @@ def main() -> None:
         sys.exit(f"no {TRAITS}: run scripts/avonet_traits.py first")
     pc = per_class(args.runs, args.allow_nonpublic)
     info = species_info(pc, pd.read_csv(SITES))
-    species_table(pc, info).to_csv(args.out / "species.csv", index=False)
+    sp = species_table(pc, info)
+    sp.to_csv(args.out / "species.csv", index=False)
+    weakest(sp).to_csv(args.out / "weakest.csv", index=False)
     groups_table(pc, info).to_csv(args.out / "groups.csv", index=False)
     print(f"wrote {', '.join(sorted(p.name for p in args.out.glob('*.csv')))} to {args.out}")
 

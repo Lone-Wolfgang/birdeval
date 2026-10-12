@@ -1,0 +1,3 @@
+site,species,common_name,ebird_code,family,habitat,n_pos,xc_total,ap_birdnet_2.4,ap_birdnet_3.0,ap_perch_v2,max_ap
+POW,pluvialis dominica,American Golden-Plover,amgplo,Charadriidae,Grassland,36,134.0,0.0082,0.0138,0.0093,0.0138
+HSN,passerella iliaca,Fox Sparrow,foxspa,Passerellidae,Forest,28,295.0,0.0338,0.088,0.0179,0.088

@@ -1,0 +1,10 @@
+# Source: scripts/birdset_labels.py (BirdSet metadata only, no audio). exact_agreement: share of 5 s segments whose labels rebuilt from call annotations (>= 0.5 s overlap) equal the official labels.
+site,recordings,length,hours,species,share_labelled,species_per_recording,exact_agreement
+HSN,100,600 s,16.65,21,0.448,3.6,0.994
+NBP,539,1–5 s,0.64,51,1.0,1.71,0.52
+NES,34,1 h,34.0,89,0.39,10.74,0.992
+PER,21,1 h,21.0,132,0.897,37.38,0.962
+POW,76,300 s,6.33,48,0.968,9.04,1.0
+SNE,33,1 h,32.99,56,0.685,9.94,0.983
+SSW,285,1 h,285.0,81,0.32,7.45,0.994
+UHH,635,60–540 s,50.88,27,0.711,3.95,0.989

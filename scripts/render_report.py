@@ -25,6 +25,7 @@ import pandas as pd
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parent))
+from build_report import WEAKEST_MIN_POS, WEAKEST_N  # noqa: E402
 from report_content import TemplateError, build_facts, fill, render_sections, repo_link  # noqa: E402
 
 MODELS = {  # fixed order and colour slot: colour follows the model, never its rank
@@ -176,6 +177,8 @@ tbody tr:hover td { background: var(--hover); }
 tr.total td { border-top: 2px solid var(--rule); font-weight: 600; }
 table.models td, table.static td { white-space: normal; vertical-align: top; min-width: 9em; }
 table.models td:first-child { font-weight: 600; min-width: 8em; }
+table.weakest td:nth-child(3) { white-space: normal; min-width: 15em; }
+table.weakest .sp { margin-left: 0; }
 table.models td:last-child { color: var(--muted); min-width: 14em; }
 td.best { font-weight: 700; }
 td.dim { color: var(--muted); }
@@ -367,7 +370,7 @@ function overview() {
   }, scape ? "Recording-level cmAP" : "Segment cmAP");
 
   const mcols = scape
-    ? [["rec_cmAP", "Rec. cmAP"], ["rec_recall90", "Recall @90%P"], ["cmAP", "Seg. cmAP"], ["AUROC", "AUROC"], ["top1", "Top-1"]]
+    ? [["rec_cmAP", "Rec. cmAP"], ["rec_recall90", "Recall @90%P"], ["rec_evidence90", "Evidence @90%P"], ["cmAP", "Seg. cmAP"], ["AUROC", "AUROC"], ["top1", "Top-1"]]
     : [["cmAP", "cmAP"], ["AUROC", "AUROC"], ["top1", "Top-1"], ["rec_recall90", "Recall @90%P"]];
   const best = {};
   for (const r of rows) for (const [k] of mcols) {
@@ -874,11 +877,11 @@ def fmt(v, d: int = 3) -> str:
     return "–" if pd.isna(v) else f"{v:.{d}f}"
 
 
-def static_table(head: list[str], body: list[list[str]], left_cols: int = 1) -> str:
+def static_table(head: list[str], body: list[list[str]], left_cols: int = 1, cls: str = "") -> str:
     th = "".join(f'<th class="{"l" if i < left_cols else ""}">{h}</th>' for i, h in enumerate(head))
     trs = "".join("<tr>" + "".join(f'<td class="{"l" if i < left_cols else ""}">{c}</td>' for i, c in enumerate(r))
                   + "</tr>" for r in body)
-    return f'<div class="table-wrap"><table><thead><tr>{th}</tr></thead><tbody>{trs}</tbody></table></div>'
+    return f'<div class="table-wrap"><table class="{cls}"><thead><tr>{th}</tr></thead><tbody>{trs}</tbody></table></div>'
 
 
 def replication_table(p: pd.DataFrame, tol: float) -> str:
@@ -907,12 +910,42 @@ def site_table(sites: pd.DataFrame, h: pd.DataFrame, density: pd.DataFrame | Non
         row = [f"<strong>{escape(r.site)}</strong>", escape(r["name"]), escape(r.region), escape(r.biome)]
         if d is not None and r.site in d.index:
             x = d.loc[r.site]
-            row += [f"{int(x.recordings):,}", escape(str(x.length)), f"{x.hours:g}", str(int(x.species)),
+            row += [f"{int(x.recordings):,}", escape(str(x.length)), f"{x.hours:.1f}", str(int(x.species)),
                     f"{round(100 * x.share_labelled)}%", f"{x.species_per_recording:.1f}"]
         elif d is not None:
             row += ["–"] * 6
         body.append(row)
     return static_table(head, body, left_cols=4)
+
+
+def species_links(r) -> str:
+    """xeno-canto, eBird and Macaulay links for one species, as in the explorer."""
+    genus_sp = "-".join(str(r["species"]).split()[:2]).capitalize()
+    out = [f'<a class="ext" href="https://xeno-canto.org/species/{escape(genus_sp)}" target="_blank" rel="noopener" title="Recordings on xeno-canto">XC</a>']
+    code = r.get("ebird_code")
+    if isinstance(code, str) and code:
+        out.append(f'<a class="ext" href="https://ebird.org/species/{escape(code)}" target="_blank" rel="noopener" title="Species page on eBird">eBird</a>')
+        out.append(f'<a class="ext" href="https://search.macaulaylibrary.org/catalog?taxonCode={escape(code)}&amp;mediaType=audio" target="_blank" rel="noopener" title="Audio in the Macaulay Library">Macaulay</a>')
+    return f'<span class="links">{"".join(out)}</span>'
+
+
+def weakest_table(w: pd.DataFrame | None, models: list[str]) -> str:
+    if w is None or w.empty:
+        return '<div class="empty">No weakest-species table: run scripts/build_report.py.</div>'
+    head = ["#", "Site", "Species", "Family", "Habitat", "Positives", "XC recs",
+            *[f'<span class="{model_cls(m)}"><span class="swatch"></span>{escape(model_name(m))}</span>' for m in models]]
+    body = []
+    for i, r in w.iterrows():
+        aps = [r.get(f"ap_{m}") for m in models]
+        best = max(a for a in aps if pd.notna(a))
+        name = r["common_name"] if isinstance(r.get("common_name"), str) else str(r["species"]).capitalize()
+        body.append([str(i + 1), escape(r["site"]),
+                     f'<span class="cn">{escape(name)}</span>{species_links(r)}<br><span class="sp">{escape(str(r["species"]).capitalize())}</span>',
+                     escape(r["family"]) if isinstance(r.get("family"), str) else "–",
+                     escape(r["habitat"]) if isinstance(r.get("habitat"), str) else "–",
+                     str(int(r["n_pos"])), f'{int(r["xc_total"]):,}' if pd.notna(r.get("xc_total")) else "–",
+                     *[f'<b>{fmt(a)}</b>' if pd.notna(a) and a == best else fmt(a) for a in aps]])
+    return static_table(head, body, left_cols=5, cls="weakest")
 
 
 def records(df: pd.DataFrame) -> list[dict]:
@@ -1064,9 +1097,12 @@ def main() -> None:
         <button data-v="overview">Overview</button><button data-v="groups">Groups</button><button data-v="species">Species</button><button data-v="hours">Hours</button></div></div>
   </div>
   <div id="view" aria-live="polite"></div>"""
+    weakest_f = args.report / "weakest.csv"
+    weakest = pd.read_csv(weakest_f) if weakest_f.exists() else None
     density_f = args.sites.with_name("site_density.csv")
     density = pd.read_csv(density_f, comment="#") if density_f.exists() else None
-    facts = build_facts(h, p, g, sp, sites_df, tol=TOL, density=density)
+    facts = build_facts(h, p, g, sp, sites_df, tol=TOL, density=density, weakest=weakest,
+                        weakest_rule=(WEAKEST_N, WEAKEST_MIN_POS))
     facts |= {"model_names": ", ".join(model_name(m) for m in models), "generated": today}
     if xc_date:
         facts["xc_query_date"] = str(xc_date)
@@ -1074,6 +1110,7 @@ def main() -> None:
         "explorer": explorer,
         "replication_table": replication_table(p, TOL),
         "site_table": site_table(sites_df, h, density),
+        "weakest_table": weakest_table(weakest, models),
     }
     used: set = set()
     try:

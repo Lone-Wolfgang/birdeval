@@ -124,7 +124,8 @@ def _all_rows(h: pd.DataFrame, mode: str) -> pd.DataFrame:
 
 
 def build_facts(h: pd.DataFrame, p: pd.DataFrame, g: pd.DataFrame, sp: pd.DataFrame, sites: pd.DataFrame,
-                tol: float = 0.02, density: pd.DataFrame | None = None) -> dict:
+                tol: float = 0.02, density: pd.DataFrame | None = None, weakest: pd.DataFrame | None = None,
+                weakest_rule: tuple[int, int] = (20, 10)) -> dict:
     """Every number the prose may cite, named plainly. Built from the report tables only."""
     f: dict = {}
     per_site = h[h.site != "All"]
@@ -154,7 +155,8 @@ def build_facts(h: pd.DataFrame, p: pd.DataFrame, g: pd.DataFrame, sp: pd.DataFr
             if m not in a.index:
                 continue
             for col, name in [("cmAP", "cmap"), ("AUROC", "auroc"), ("top1", "top1"),
-                              ("rec_cmAP", "rec_cmap"), ("rec_recall90", "rec_recall90")]:
+                              ("rec_cmAP", "rec_cmap"), ("rec_recall90", "rec_recall90"),
+                              ("rec_evidence90", "rec_evidence90"), ("rec_evidence90_cond", "rec_evidence90_cond")]:
                 v = a.loc[m, col] if col in a else np.nan
                 if pd.notna(v):
                     f[f"{mode}_{name}_{k}"] = float(v)
@@ -205,4 +207,12 @@ def build_facts(h: pd.DataFrame, p: pd.DataFrame, g: pd.DataFrame, sp: pd.DataFr
         if not sub.empty:
             f[f"prev_{label}_range"] = (float(sub.mean_ap.min()), float(sub.mean_ap.max()))
             f[f"prev_{label}_pairs"] = int(sub.n_pairs.iloc[0])
+    if weakest is not None and not weakest.empty:
+        f["weakest_n"] = len(weakest)
+        f["weakest_rule_n"], f["weakest_min_pos"] = weakest_rule
+        f["weakest_max_ap"] = float(weakest["max_ap"].max())
+        counts = weakest["site"].value_counts()
+        f["weakest_top_site"] = counts.index[0]
+        f["weakest_top_site_n"] = int(counts.iloc[0])
+        f["weakest_n_sites"] = int(weakest["site"].nunique())
     return f

@@ -2,6 +2,7 @@
 and the soundscape-label cross-check.
 
     python -I scripts/birdset_labels.py META_DIR [--download] [--out results/birdset_labels]
+                                        [--reference configs/reference/site_density.csv]
 
 META_DIR holds <SITE>_metadata_test.parquet and <SITE>_metadata_test_5s.parquet
 (--download fetches them, ~10 MB in all).
@@ -12,6 +13,10 @@ call-level `test` events with the harness's own event rule
 (strong_labels.event_hits), and with a looser any-overlap rule. High
 agreement means the clip -> soundscape offset mapping is right; the rule
 that agrees best hints at how BirdSet derived its 5 s labels.
+
+--reference also writes the per-site table the report page shows
+(recordings, recording length, hours, species, share of clips labelled,
+species per recording, exact segment agreement under the harness's rule).
 """
 
 from __future__ import annotations
@@ -75,6 +80,28 @@ def density(c: pd.DataFrame, events: pd.DataFrame, site: str) -> dict:
     }
 
 
+def length_text(lo: float, mid: float, hi: float) -> str:
+    """Recording length for people: '1 h', '300 s', or a range when lengths vary."""
+    def one(x):
+        return f"{x / 3600:g} h" if x >= 3600 - 10 else f"{round(x):g} s"
+    return one(mid) if hi - lo <= 0.01 * mid else f"{round(lo):g}–{round(hi):g} s"
+
+
+def reference_table(dens: pd.DataFrame, checks: pd.DataFrame) -> pd.DataFrame:
+    exact = checks[checks["rule"] == "strong_labels_0.5s"].set_index("site")["segment_exact_match_pct"]
+    return pd.DataFrame({
+        "site": dens["site"],
+        "recordings": dens["recordings"],
+        "length": [length_text(a, b, c) for a, b, c in
+                   zip(dens["rec_len_s_min"], dens["rec_len_s_median"], dens["rec_len_s_max"])],
+        "hours": dens["hours"].round(2),
+        "species": dens["species"],
+        "share_labelled": (dens["clips_labelled_pct"] / 100).round(3),
+        "species_per_recording": dens["species_per_recording"].round(2),
+        "exact_agreement": (dens["site"].map(exact) / 100).round(3),
+    })
+
+
 def crosscheck(c: pd.DataFrame, events: pd.DataFrame, min_overlap: float) -> dict:
     ev_by = {k: g for k, g in events.groupby("name")}
     exact, b_pos, c_pos, both, cells, cell_agree = 0, 0, 0, 0, 0, 0
@@ -102,6 +129,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("meta_dir")
     p.add_argument("--download", action="store_true")
     p.add_argument("--out", default="results/birdset_labels")
+    p.add_argument("--reference", help="also write the report's site table here (configs/reference/site_density.csv)")
     a = p.parse_args(argv)
     meta, out = Path(a.meta_dir), Path(a.out)
     meta.mkdir(parents=True, exist_ok=True)
@@ -121,6 +149,13 @@ def main(argv: list[str] | None = None) -> None:
     dens, checks = pd.DataFrame(dens), pd.DataFrame(checks)
     dens.to_csv(out / "density.csv", index=False)
     checks.to_csv(out / "crosscheck.csv", index=False)
+    if a.reference:
+        ref = Path(a.reference)
+        with ref.open("w") as fh:
+            fh.write("# Source: scripts/birdset_labels.py (BirdSet metadata only, no audio). "
+                     "exact_agreement: share of 5 s segments whose labels rebuilt from call annotations "
+                     "(>= 0.5 s overlap) equal the official labels.\n")
+            reference_table(dens, checks).to_csv(fh, index=False)
     with pd.option_context("display.width", 200, "display.max_columns", 30):
         print(dens.to_string(index=False), "\n")
         print(checks.to_string(index=False))

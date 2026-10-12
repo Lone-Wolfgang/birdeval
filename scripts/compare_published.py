@@ -51,13 +51,18 @@ def load_summaries(run_dirs: list[Path]) -> pd.DataFrame:
             rec = json.loads(rl.read_text()) if rl.exists() else {}
             for scope in ("all", "covered", "shared"):
                 m = s[scope]
+                t90 = rec.get(scope, {}).get("targets", {}).get("0.9", {})
                 lo, hi = m.get("cmAP_ci95") or (float("nan"), float("nan"))
                 rows.append({
                     "run": d.name, "evalset": s["evalset"], "model": s["model"], "classes": scope,
                     **{k: m[k] for k in ("cmAP", "AUROC", "top1", "n_segments", "n_classes_scored")},
                     "cmAP_lo": lo, "cmAP_hi": hi,
                     "rec_cmAP": rec.get(scope, {}).get("cmAP", float("nan")),
-                    "rec_recall90": rec.get(scope, {}).get("targets", {}).get("0.9", {}).get("recall", float("nan")),
+                    "rec_recall90": t90.get("recall", float("nan")),
+                    # of the claims at the 90%-precision threshold, the share whose cited window
+                    # holds the species; cond: only claims right at the unit level
+                    "rec_evidence90": t90.get("evidence_precision", float("nan")),
+                    "rec_evidence90_cond": t90.get("conditional_evidence_precision", float("nan")),
                 })
     return pd.DataFrame(rows)
 

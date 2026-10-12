@@ -1,19 +1,19 @@
-mode,site,model,evalset,cmAP,cmAP_lo,cmAP_hi,AUROC,top1,rec_cmAP,rec_recall90,n_species,n_segs,sites
-clips,HSN,birdnet_2.4,birdset_HSN,0.5197,0.4657,0.6073,0.9353,0.8542,,0.5288,21,12000,
-clips,HSN,birdnet_3.0,birdset_HSN,0.5617,0.4877,0.667,0.932,0.6671,,0.2974,21,12000,
-clips,HSN,perch_v2,birdset_HSN,0.5289,0.4503,0.6022,0.8963,0.6556,,0.1511,21,12000,
-scape,HSN,birdnet_2.4,birdset_HSN_scape,0.553,0.4973,0.6386,0.9469,0.8765,0.669,0.6639,21,12000,
-scape,HSN,birdnet_3.0,birdset_HSN_scape,0.5592,0.4896,0.6481,0.9422,0.7086,0.683,0.4861,21,12000,
-scape,HSN,perch_v2,birdset_HSN_scape,0.5467,0.4774,0.624,0.9077,0.6784,0.6463,0.3111,21,12000,
-clips,POW,birdnet_2.4,birdset_POW,0.5746,0.5632,0.6582,0.9148,0.9841,,0.7619,48,4560,
-clips,POW,birdnet_3.0,birdset_POW,0.7081,0.6943,0.7703,0.9519,0.9628,,0.7719,48,4560,
-clips,POW,perch_v2,birdset_POW,0.557,0.5449,0.6227,0.9161,0.944,,0.4856,48,4560,
-scape,POW,birdnet_2.4,birdset_POW_scape,0.6019,0.5844,0.6775,0.9364,0.9674,0.7603,0.7802,48,4560,
-scape,POW,birdnet_3.0,birdset_POW_scape,0.7068,0.68,0.7589,0.9553,0.9241,0.866,0.8166,48,4560,
-scape,POW,perch_v2,birdset_POW_scape,0.5417,0.5272,0.6165,0.9223,0.9343,0.7841,0.5459,48,4560,
-clips,All,birdnet_2.4,,0.4707,,,0.9032,0.7861,,0.3679,505,322292,HSN POW
-clips,All,birdnet_3.0,,0.5235,,,0.9144,0.7561,,0.311,505,322292,HSN POW
-clips,All,perch_v2,,0.4425,,,0.9063,0.6902,,0.2101,505,322292,HSN POW
-scape,All,birdnet_2.4,,0.5043,,,0.9243,0.8029,0.7012,0.5057,505,322295,HSN POW
-scape,All,birdnet_3.0,,0.5373,,,0.9237,0.7649,0.7346,0.509,505,322295,HSN POW
-scape,All,perch_v2,,0.4577,,,0.9124,0.7045,0.6805,0.3504,505,322295,HSN POW
+mode,site,model,evalset,cmAP,cmAP_lo,cmAP_hi,AUROC,top1,rec_cmAP,rec_recall90,rec_evidence90,rec_evidence90_cond,n_species,n_segs,sites
+clips,HSN,birdnet_2.4,birdset_HSN,0.5197,0.4657,0.6073,0.9353,0.8542,,0.5288,,,21,12000,
+clips,HSN,birdnet_3.0,birdset_HSN,0.5617,0.4877,0.667,0.932,0.6671,,0.2974,,,21,12000,
+clips,HSN,perch_v2,birdset_HSN,0.5289,0.4503,0.6022,0.8963,0.6556,,0.1511,,,21,12000,
+scape,HSN,birdnet_2.4,birdset_HSN_scape,0.553,0.4973,0.6386,0.9469,0.8765,0.669,0.6639,0.8333,0.9163,21,12000,
+scape,HSN,birdnet_3.0,birdset_HSN_scape,0.5592,0.4896,0.6481,0.9422,0.7086,0.683,0.4861,0.8854,0.9657,21,12000,
+scape,HSN,perch_v2,birdset_HSN_scape,0.5467,0.4774,0.624,0.9077,0.6784,0.6463,0.3111,0.871,0.9643,21,12000,
+clips,POW,birdnet_2.4,birdset_POW,0.5746,0.5632,0.6582,0.9148,0.9841,,0.7619,,,48,4560,
+clips,POW,birdnet_3.0,birdset_POW,0.7081,0.6943,0.7703,0.9519,0.9628,,0.7719,,,48,4560,
+clips,POW,perch_v2,birdset_POW,0.557,0.5449,0.6227,0.9161,0.944,,0.4856,,,48,4560,
+scape,POW,birdnet_2.4,birdset_POW_scape,0.6019,0.5844,0.6775,0.9364,0.9674,0.7603,0.7802,0.8446,0.9328,48,4560,
+scape,POW,birdnet_3.0,birdset_POW_scape,0.7068,0.68,0.7589,0.9553,0.9241,0.866,0.8166,0.8459,0.9394,48,4560,
+scape,POW,perch_v2,birdset_POW_scape,0.5417,0.5272,0.6165,0.9223,0.9343,0.7841,0.5459,0.8654,0.96,48,4560,
+clips,All,birdnet_2.4,,0.4707,,,0.9032,0.7861,,0.3679,,,505,322292,HSN POW
+clips,All,birdnet_3.0,,0.5235,,,0.9144,0.7561,,0.311,,,505,322292,HSN POW
+clips,All,perch_v2,,0.4425,,,0.9063,0.6902,,0.2101,,,505,322292,HSN POW
+scape,All,birdnet_2.4,,0.5043,,,0.9243,0.8029,0.7012,0.5057,0.7906,0.8727,505,322295,HSN POW
+scape,All,birdnet_3.0,,0.5373,,,0.9237,0.7649,0.7346,0.509,0.7655,0.8469,505,322295,HSN POW
+scape,All,perch_v2,,0.4577,,,0.9124,0.7045,0.6805,0.3504,0.7812,0.8657,505,322295,HSN POW
