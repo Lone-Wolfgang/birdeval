@@ -35,7 +35,9 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -58,6 +60,8 @@ _CLIP = re.compile(r"^(?P<scape>.+)_(?P<start>\d+)_(?P<end>\d+)(?P<ext>\.\w+)$")
 
 SEGMENT_S = 5.0
 _TOL_S = 0.01  # float slack when comparing clip ends to soundscape durations
+DAY_S = 86400
+_UTC_NAME = re.compile(r"_(\d{8})_\d{6}Z\.\w+$")  # PER_001_S01_20190116_100007Z.ogg
 
 
 def parse_clip_name(path: str) -> tuple[str, float] | None:
@@ -79,6 +83,47 @@ def _load(config: str, split: str, cache_dir: str | None):
     if "audio" in ds.column_names:
         ds = ds.remove_columns("audio")  # we only need paths; skip decoding
     return ds
+
+
+def utc_offset_s(path: str, tz: str) -> float | None:
+    """Seconds to add to a UTC clock for files named ..._YYYYMMDD_HHMMSSZ; None if not UTC-named."""
+    m = _UTC_NAME.search(path)
+    if not m:
+        return None
+    day = datetime.strptime(m[1], "%Y%m%d").replace(hour=12, tzinfo=timezone.utc)
+    return day.astimezone(ZoneInfo(tz)).utcoffset().total_seconds()
+
+
+def clock_s(t: pd.Series) -> pd.Series:
+    """'06:12:03' -> seconds since midnight."""
+    p = t.str.split(":", expand=True).astype(float)
+    return p[0] * 3600 + p[1] * 60 + (p[2] if 2 in p else 0)
+
+
+def event_clock(df: pd.DataFrame, tz: str) -> pd.Series:
+    """Local clock (s since midnight) of each event row (filepath, local_time).
+
+    BirdSet's `local_time` is UTC for sites whose file names end in "Z" (PER,
+    SSW); those are converted with the site's time zone on the recording's
+    date, so daylight saving is applied.
+    """
+    offset = df["filepath"].map({f: utc_offset_s(f, tz) for f in df["filepath"].unique()})
+    return (clock_s(df["local_time"]) + offset.fillna(0)) % DAY_S
+
+
+def file_local_start(config: str, tz: str, cache_dir: str | None = None) -> dict[str, float]:
+    """Local clock time (s since midnight) at which each soundscape file starts, keyed by resolved path.
+
+    From the `test` split's call-level metadata: each call's clock time minus its
+    offset into the file, median over the file's calls. Files without calls or
+    sites without times (NBP) are absent.
+    """
+    ds = _load(config, "test", cache_dir)
+    df = ds.select_columns(["filepath", "start_time", "local_time"]).to_pandas().dropna(subset=["local_time"])
+    if df.empty:
+        return {}
+    start = ((event_clock(df, tz) - df["start_time"]) % DAY_S).groupby(df["filepath"]).median()
+    return {str(Path(f).resolve()): float(v) for f, v in start.items()}
 
 
 def _code_map(code_names: list[str], taxonomy: Taxonomy, config: str) -> tuple[dict[int, str | None], list[str]]:

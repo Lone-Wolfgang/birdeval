@@ -1,9 +1,9 @@
-site,name,region,biome
-POW,Powdermill Nature Reserve,"Pennsylvania, USA",Temperate broadleaf & mixed forest
-SSW,Sapsucker Woods,"New York, USA",Temperate broadleaf & mixed forest
-SNE,Sierra Nevada,"California, USA",Temperate conifer forest
-HSN,High Sierra Nevada,"California, USA",Temperate conifer forest
-PER,Amazon Basin,Peru,Tropical moist broadleaf forest
-NES,Colombia & Costa Rica,Colombia and Costa Rica,Tropical moist broadleaf forest
-UHH,Hawaiʻi Island,"Hawaiʻi, USA",Tropical moist broadleaf forest
-NBP,NIPS4BPlus,France and Spain,"Mediterranean forest, woodland & scrub"
+site,name,region,biome,tz
+POW,Powdermill Nature Reserve,"Pennsylvania, USA",Temperate broadleaf & mixed forest,America/New_York
+SSW,Sapsucker Woods,"New York, USA",Temperate broadleaf & mixed forest,America/New_York
+SNE,Sierra Nevada,"California, USA",Temperate conifer forest,America/Los_Angeles
+HSN,High Sierra Nevada,"California, USA",Temperate conifer forest,America/Los_Angeles
+PER,Amazon Basin,Peru,Tropical moist broadleaf forest,America/Lima
+NES,Colombia & Costa Rica,Colombia and Costa Rica,Tropical moist broadleaf forest,America/Bogota
+UHH,Hawaiʻi Island,"Hawaiʻi, USA",Tropical moist broadleaf forest,Pacific/Honolulu
+NBP,NIPS4BPlus,France and Spain,"Mediterranean forest, woodland & scrub",Europe/Paris

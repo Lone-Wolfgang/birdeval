@@ -116,7 +116,67 @@ To build it:
 2. Run `python -I scripts/avonet_traits.py ELEData.zip`. This needs the
    `report` extra.
 
-Site names and WWF biomes are in `configs/reference/sites.csv`.
+Site names, WWF biomes and time zones are in `configs/reference/sites.csv`.
+
+#### Species information
+
+Each source has its own script. Each script writes a CSV to
+`configs/reference/` and prints how many BirdSet species it covers, listing
+any it misses. `build_report.py` joins whatever CSVs exist.
+
+| Script | Source | Adds |
+|---|---|---|
+| `avonet_traits.py ELEData.zip` | AVONET (CC BY 4.0) | habitat, habitat density, migration, body mass, wing length, trophic niche, primary lifestyle |
+| `elton_traits.py BirdFuncDat.txt ELEData.zip` | [EltonTraits 1.0](https://esapubs.org/archive/ecol/E095/178/BirdFuncDat.txt) (Wilman et al. 2014, CC0) | diet category, foraging stratum, nocturnal flag |
+| `site_calls.py` | BirdSet's call-level test labels | for each site and species: median call frequency band, calls per local hour, and share of calls at night; `site_effort.csv` holds recorded minutes per hour |
+| `xc_counts.py` | xeno-canto API v3 | recordings per species, in total and from the site's country |
+
+Common names and eBird codes come from the eBird taxonomy CSV. The page
+links each species to xeno-canto, eBird and the Macaulay Library.
+
+Notes on the sources:
+- **EltonTraits:** it uses a ~2010 taxonomy, so names are matched through
+  AVONET's per-specimen eBird↔BirdTree↔BirdLife names. Its foraging strata
+  are noisy for some species. For example, Apapane is listed as 100% ground,
+  and its "aerial" means high above the vegetation, so swallows score low.
+- **BirdSet times:** `local_time` is UTC for PER and SSW, whose file names end
+  in `Z`. `site_calls.py` converts it using the site's time zone. Most sites
+  record only around dawn; SSW records all day and UHH 05–23 h. NBP has no
+  times or frequency boxes.
+- **xeno-canto:** needs a free account. Get the API key under "Your account"
+  and `export XC_API_KEY=...`. The key is read from the environment only.
+  Responses are cached in `cache/xc/`. Counts are as of the query date, not
+  as of any model's training cutoff.
+
+#### By hour of day
+
+```bash
+python -I scripts/hourly.py        # -> results/report/hourly.csv, then re-render
+```
+
+Bird activity and model performance by local hour, pooled over species. It
+reads the prediction cache and **never runs inference**: a site is skipped,
+with a message, unless every model has every soundscape file cached. It
+rebuilds the same segment scores as `birdeval run`; the all-hours AP and
+AUROC match each run's `per_class_all.csv`. NBP has no clock times.
+
+Each 5 s segment gets the local hour of its midpoint. The file start comes
+from BirdSet's call times (`birdset.file_local_start`), with UTC-named files
+converted. Per site, hour and model it reports:
+- Activity: share of segments with a bird, species per segment, species
+  heard.
+- AUROC, the main measure: it does not depend on how common calls are, so
+  busy and quiet hours compare fairly. cmAP is there too, but a quiet hour
+  lowers AP even for an unchanged model.
+- Recall, precision and false alarms per hour of audio at fixed thresholds.
+  Each species' threshold gives 90% segment precision over the site's whole
+  test set and is set before the split by hour.
+
+Only hours with at least 30 minutes of reviewed audio are kept. `All` shows,
+for each hour, the mean over sites of the change from that site's all-day
+value, so it is not driven by which sites record at which hours; its activity
+columns pool the sites. 95% intervals resample recordings within the
+hour (200 draws).
 
 A group's unit is a (site, species) pair, and its 95% interval comes from
 resampling those pairs. Groups use only sites that every model has finished,
@@ -126,7 +186,8 @@ The page has a static summary and published check. Below them is an
 explorer with three controls:
 - Mode: clips or soundscapes.
 - Dataset: all sites, or one site.
-- View: overview, habitat, site biome, prevalence or species.
+- View: overview, groups (by habitat, site biome, prevalence or a species
+  trait), species, or hours.
 
 Every table sorts when you click a column heading. The species table also
 has:

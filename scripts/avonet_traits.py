@@ -1,4 +1,4 @@
-"""Species traits table from AVONET, for grouping results by habitat.
+"""Species traits table from AVONET: habitat, migration, size, diet and lifestyle.
 
     python -I scripts/avonet_traits.py AVONET [--out configs/reference/species_traits.csv]
 
@@ -27,6 +27,7 @@ from birdeval.taxonomy import Taxonomy
 
 SHEET = "AVONET2_eBird"
 MIGRATION = {1: "Sedentary", 2: "Partial migrant", 3: "Migratory"}
+DENSITY = {1: "Dense", 2: "Semi-open", 3: "Open"}
 
 
 def read_avonet(path: Path) -> pd.DataFrame:
@@ -52,6 +53,12 @@ def main() -> None:
         "family": av["Family2"],
         "habitat": av["Habitat"].fillna("Unknown"),
         "migration": av["Migration"].map(MIGRATION).fillna("Unknown"),
+        "habitat_density": av["Habitat.Density"].map(DENSITY).fillna("Unknown"),
+        "mass_g": av["Mass"],
+        "wing_mm": av["Wing.Length"],
+        "trophic_level": av["Trophic.Level"].fillna("Unknown"),
+        "trophic_niche": av["Trophic.Niche"].fillna("Unknown"),
+        "lifestyle": av["Primary.Lifestyle"].fillna("Unknown"),
     })
     dup = out["species"].duplicated(keep=False)
     if dup.any():

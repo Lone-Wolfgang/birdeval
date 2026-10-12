@@ -120,6 +120,40 @@ td.dim { color: var(--muted); }
 .fam { color: var(--muted); font-size: 12px; }
 .chip { display: inline-block; font: 600 11px/1 var(--mono); padding: 4px 7px; border-radius: 99px; border: 1px solid currentColor; }
 .chip.ok { color: var(--ok); } .chip.warn { color: var(--warn); }
+.name { white-space: normal; min-width: 14em; }
+button.exp { font: inherit; color: var(--fg); background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline; text-align: left; }
+button.exp:hover .cn { text-decoration: underline; text-underline-offset: 3px; }
+.tw { color: var(--muted); font-size: 11px; width: 1ch; }
+.cn { font-weight: 600; }
+.sp { margin-left: 1.6ch; }
+.links { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: 1px; }
+a.ext { font: 600 10.5px/1 var(--mono); color: var(--accent); text-decoration: none; border: 1px solid var(--rule); border-radius: 4px; padding: 3px 5px; }
+a.ext:hover { border-color: var(--accent); }
+a.ext:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+tr.detail > td { background: var(--bg); white-space: normal; text-align: left; padding: 16px 18px; }
+tbody tr.detail:hover td { background: var(--bg); }
+/* the detail row spans a table that may scroll sideways: keep the panel in the visible part */
+.detail-grid { position: sticky; left: 18px; width: min(880px, calc(100vw - 92px)); display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 384px); gap: 16px 28px; }
+@media (max-width: 760px) { .detail-grid { grid-template-columns: minmax(0, 1fr); width: calc(100vw - 72px); } }
+dl.facts { grid-template-columns: max-content minmax(0, 1fr); font-size: 13.5px; gap: 4px 14px; }
+dl.facts dt { font: 600 11.5px/1.8 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.minis { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.minis .ctl-label { margin-bottom: 6px; }
+svg.mini { display: block; width: 100%; max-width: 384px; height: auto; }
+svg.mini text { font-family: var(--body); }
+.bar { fill: var(--accent); }
+.centre { stroke: var(--fg); stroke-width: 2; }
+.gap { fill: url(#hatch); }
+.hcol { fill: transparent; }
+.gridline.zero { stroke: var(--muted); }
+.hcol:hover { fill: var(--hover); opacity: .5; }
+.hours-head { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; }
+.hatch { stroke: var(--rule); stroke-width: 2; }
+details.colpick { border: 0; padding: 0; position: relative; align-self: flex-end; }
+details.colpick summary { font-size: 14px; color: var(--fg); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 10px; background: var(--surface); }
+details.colpick[open] summary { margin-bottom: 8px; }
+.colgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9em, 1fr)); gap: 6px 14px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
 .empty { padding: 18px; color: var(--muted); background: var(--surface); border: 1px dashed var(--rule); border-radius: 6px; }
 
 details { border-top: 1px solid var(--rule); padding-top: 10px; }
@@ -138,13 +172,13 @@ JS = r"""
 const D = JSON.parse(document.getElementById("report-data").textContent);
 const MODELS = D.models, SITES = D.sites;
 const SITE_ORDER = Object.fromEntries(SITES.map((s, i) => [s.site, i]));
-const VIEWS = ["overview", "habitat", "biome", "prevalence", "species"];
+const VIEWS = ["overview", "groups", "species", "hours"];
 const RARE = 10;
 const KEY = "birdeval-report-v2";
 
 const state = Object.assign(
-  {mode: "clips", site: "All", view: "overview", metric: "ap", dA: MODELS[0].id,
-   dB: MODELS[MODELS.length - 1].id, q: "", hideRare: true, sort: {}},
+  {mode: "clips", site: "All", view: "overview", groupBy: "habitat", metric: "ap", dA: MODELS[0].id,
+   dB: MODELS[MODELS.length - 1].id, hMetric: "AUROC", q: "", hideRare: true, sort: {}, cols: [], open: null},
   load());
 const tok = location.hash.slice(1);
 if (SITE_ORDER[tok] !== undefined) state.site = tok;
@@ -230,7 +264,8 @@ function table(id, cols, rows, opts = {}) {
   const body = rows.map(r => `<tr class="${r._cls || ""}">` + cols.map(c => {
     const v = c.cell ? c.cell(r) : esc(r[c.k]);
     return v.startsWith("<td") ? v : `<td class="${c.left ? "l" : ""}">${v}</td>`;
-  }).join("") + "</tr>").join("");
+  }).join("") + "</tr>" +
+    (opts.detail && opts.isOpen(r) ? `<tr class="detail"><td colspan="${cols.length}">${opts.detail(r)}</td></tr>` : "")).join("");
   return `<div class="table-wrap${opts.tall ? " tall" : ""}"><table><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
@@ -289,18 +324,29 @@ function overview() {
 }
 
 // ---- grouped views ------------------------------------------------------------------
+// key -> [menu label, heading, lede]
 const GROUPING = {
-  habitat: ["By species habitat", "Mean per-species AP, grouped by each species’ primary habitat in AVONET (Tobias et al. 2022). Habitat describes the bird, not the site. Habitats with fewer than 5 pairs in the current selection merge into Other."],
-  biome: ["By site biome", "Mean per-species AP, grouped by the WWF biome of the recording site. With eight sites, each biome holds one to three sites, so a biome’s result is largely its sites’ results."],
-  prevalence: ["By prevalence", "Mean per-species AP, grouped by how many labelled 5-second segments the species has at its site. Bins were fixed before looking at results."],
+  habitat: ["Habitat", "By species habitat", "Grouped by each species’ primary habitat in AVONET (Tobias et al. 2022). Habitat describes the bird, not the site."],
+  biome: ["Site biome", "By site biome", "Grouped by the WWF biome of the recording site. With eight sites, each biome holds one to three sites, so a biome’s result is largely its sites’ results."],
+  prevalence: ["Prevalence", "By prevalence", "Grouped by how many labelled 5-second segments the species has at its site."],
+  mass: ["Body mass", "By body mass", "Grouped by AVONET body mass."],
+  lifestyle: ["Lifestyle", "By lifestyle", "Grouped by AVONET primary lifestyle: aerial, insessorial (perching), terrestrial, aquatic or generalist."],
+  stratum: ["Foraging stratum", "By foraging stratum", "Grouped by the stratum where the species does most of its foraging, from EltonTraits 1.0 (Wilman et al. 2014)."],
+  diet: ["Diet", "By diet", "Grouped by EltonTraits’ five diet categories."],
+  call_freq: ["Call frequency", "By call frequency", "Grouped by the median centre frequency of the species’ annotated calls at its site, from BirdSet’s call boxes. NBP has no call boxes."],
+  xc: ["Xeno-canto recordings", "By xeno-canto recordings", "Grouped by how many xeno-canto recordings the species has: a rough proxy for how much training audio the models had for it."],
 };
 
 function grouped() {
-  const [title, lede] = GROUPING[state.view];
-  if (state.view === "biome" && state.site !== "All")
-    return `<h3>${title}</h3><div class="empty">A single site has a single biome. Choose “All datasets” to compare biomes.</div>`;
-  const rows = D.groups.filter(r => r.mode === state.mode && r.scope === state.site && r.grouping === state.view);
-  if (!rows.length) return `<h3>${title}</h3><div class="empty">No results for this selection yet.</div>`;
+  const avail = Object.keys(GROUPING).filter(g => D.groups.some(r => r.mode === state.mode && r.grouping === g));
+  if (!avail.includes(state.groupBy)) state.groupBy = avail[0] || "habitat";
+  const [, title, lede] = GROUPING[state.groupBy];
+  const picker = `<div class="subcontrols"><div class="ctl"><label class="ctl-label" for="g-by">Group by</label>
+    <select id="g-by">${avail.map(g => `<option value="${g}"${g === state.groupBy ? " selected" : ""}${g === "biome" && state.site !== "All" ? " disabled" : ""}>${esc(GROUPING[g][0])}${g === "biome" && state.site !== "All" ? " (all datasets only)" : ""}</option>`).join("")}</select></div></div>`;
+  if (state.groupBy === "biome" && state.site !== "All")
+    return `${picker}<h3>${title}</h3><div class="empty">A single site has a single biome. Choose “All datasets” to compare biomes.</div>`;
+  const rows = D.groups.filter(r => r.mode === state.mode && r.scope === state.site && r.grouping === state.groupBy);
+  if (!rows.length) return `${picker}<h3>${title}</h3><div class="empty">No results for this selection yet.</div>`;
   const order = [...new Set(rows.map(r => r.group))];
   const wide = order.map((g, i) => {
     const sub = rows.filter(r => r.group === g);
@@ -323,7 +369,10 @@ function grouped() {
   ];
   if (state.site === "All") cols.push({k: "sites", label: "Sites", left: true, cell: r => esc(r.sites.replaceAll(" ", ", "))});
   const unit = state.mode === "scape" ? "segment AP within the soundscapes" : "AP on the test clips";
-  return `<h3>${title}</h3><p class="lede">${lede} Each unit is one (site, species) pair, scored by ${unit}; intervals resample those pairs. Best model per group in bold.</p>${legend()}${chart}${table("g-" + state.view, cols, wide)}`;
+  const binned = ["prevalence", "mass", "call_freq", "xc"].includes(state.groupBy);
+  return `${picker}<h3>${title}</h3><p class="lede">Mean per-species AP. ${lede} ` +
+    (binned ? "Bins were fixed before looking at results. " : "Categories with fewer than 5 pairs in the current selection merge into Other. ") +
+    `Each unit is one (site, species) pair, scored by ${unit}; intervals resample those pairs. Best model per group in bold.</p>${legend()}${chart}${table("g-" + state.groupBy, cols, wide)}`;
 }
 
 // ---- species table -------------------------------------------------------------------
@@ -338,19 +387,97 @@ function metrics() {
        recall90: ["Recall @90% precision", "Share of the species' clips found at the threshold giving 90% precision"]};
 }
 
+// optional columns: key -> [label, title, cell(row), sort(row)]
+const pct = v => num(v) ? Math.round(v * 100) + "%" : "–";
+const EXTRA = {
+  mass_g: ["Mass", "AVONET body mass (g)", r => num(r.mass_g) ? (r.mass_g < 10 ? r.mass_g.toFixed(1) : Math.round(r.mass_g).toLocaleString("en-US")) + " g" : "–"],
+  lifestyle: ["Lifestyle", "AVONET primary lifestyle", r => esc(r.lifestyle || "–")],
+  stratum: ["Foraging", "EltonTraits main foraging stratum", r => esc(r.stratum || "–")],
+  diet: ["Diet", "EltonTraits diet category", r => esc(r.diet || "–")],
+  nocturnal: ["Nocturnal", "EltonTraits nocturnal flag", r => r.nocturnal === true ? "Yes" : r.nocturnal === false ? "No" : "–", r => r.nocturnal === true ? 1 : r.nocturnal === false ? 0 : null],
+  freq_centre_khz: ["Call band", "Median low–high frequency of the species' annotated calls at this site", r => num(r.freq_low_khz) ? `${r.freq_low_khz.toFixed(1)}–${r.freq_high_khz.toFixed(1)} kHz` : "–"],
+  night_share: ["Night calls", "Share of annotated calls between 20:00 and 05:00 local time (only where the site recorded at night)", r => pct(r.night_share)],
+  xc_total: ["XC recs", "Xeno-canto recordings of the species", r => num(r.xc_total) ? r.xc_total.toLocaleString("en-US") : "–"],
+  xc_site_countries: ["XC local", "Xeno-canto recordings from the site's country", r => num(r.xc_site_countries) ? r.xc_site_countries.toLocaleString("en-US") : "–"],
+};
+const EXTRA_AVAIL = Object.keys(EXTRA).filter(k => D.species.some(r => r[k] !== null && r[k] !== undefined));
+const rowKey = r => `${r.site}|${r.species}`;
+const xcUrl = r => `https://xeno-canto.org/species/${encodeURIComponent(cap(r.species.split(" ").slice(0, 2).join("-")))}`;
+const links = r => `<span class="links"><a class="ext" href="${xcUrl(r)}" target="_blank" rel="noopener" title="Recordings on xeno-canto">XC</a>` +
+  (r.ebird_code ? `<a class="ext" href="https://ebird.org/species/${encodeURIComponent(r.ebird_code)}" target="_blank" rel="noopener" title="Species page on eBird">eBird</a>` : "") + "</span>";
+
+function activitySvg(r) {
+  const eff = D.effort[r.site];
+  if (!r.hours || !eff) return `<p class="meta">No call times for this site.</p>`;
+  const n = r.hours.split(";").map(Number);
+  const rate = n.map((c, h) => eff[h] > 0 ? c / (eff[h] / 60) : null);
+  const max = Math.max(...rate.filter(num), 1e-9);
+  const bw = 16, H = 56, top = 6;
+  const bars = rate.map((v, h) => {
+    const x = h * bw;
+    const tip = eff[h] > 0 ? `${String(h).padStart(2, "0")}:00 · ${n[h]} calls in ${Math.round(eff[h])} recorded min (${v.toFixed(1)} per hour)` : `${String(h).padStart(2, "0")}:00 · not recorded`;
+    if (v === null) return `<rect class="gap" x="${x + 1}" y="${top}" width="${bw - 2}" height="${H}"><title>${tip}</title></rect>`;
+    const bh = Math.max(v > 0 ? 2 : 0, v / max * H);
+    return `<g><title>${tip}</title><rect x="${x}" y="${top}" width="${bw}" height="${H}" fill="transparent"/><rect class="bar" x="${x + 2}" y="${top + H - bh}" width="${bw - 4}" height="${bh}" rx="2"/></g>`;
+  }).join("");
+  const ticks = [0, 6, 12, 18, 24].map(h => `<text class="tick" x="${h * bw}" y="${top + H + 14}" text-anchor="${h === 0 ? "start" : h === 24 ? "end" : "middle"}">${String(h).padStart(2, "0")}</text>`).join("");
+  return `<svg class="mini" viewBox="0 0 ${24 * bw} ${top + H + 18}" role="img" aria-label="Calls per recorded hour by local time">
+    <defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="5" class="hatch"/></pattern></defs>
+    <line class="gridline" x1="0" x2="${24 * bw}" y1="${top + H}" y2="${top + H}"/>${bars}${ticks}</svg>`;
+}
+
+function freqSvg(r) {
+  if (!num(r.freq_low_khz)) return `<p class="meta">No call boxes for this site.</p>`;
+  const top = Math.max(16, Math.ceil(r.freq_high_khz)), W = 384, x = v => v / top * W;
+  const ticks = [0, 4, 8, 12, 16].filter(t => t <= top).map(t => `<text class="tick" x="${x(t)}" y="34" text-anchor="${t === 0 ? "start" : t === top ? "end" : "middle"}">${t}</text>`).join("");
+  return `<svg class="mini" viewBox="0 0 ${W} 38" role="img" aria-label="Call frequency band">
+    <line class="gridline" x1="0" x2="${W}" y1="12" y2="12"/>
+    <rect class="bar" x="${x(r.freq_low_khz)}" y="4" width="${Math.max(2, x(r.freq_high_khz) - x(r.freq_low_khz))}" height="16" rx="3" opacity=".55"><title>${r.freq_low_khz.toFixed(1)}–${r.freq_high_khz.toFixed(1)} kHz (medians)</title></rect>
+    <line class="centre" x1="${x(r.freq_centre_khz)}" x2="${x(r.freq_centre_khz)}" y1="2" y2="22"/>${ticks}</svg>`;
+}
+
+function detail(r) {
+  const fact = (k, v) => v && v !== "–" ? `<dt>${k}</dt><dd>${v}</dd>` : "";
+  const mass = EXTRA.mass_g[2](r);
+  const site = siteName(r.site);
+  return `<div class="detail-grid">
+    <dl class="facts">
+      ${fact("Family", esc(r.family))}
+      ${fact("Habitat", esc([r.habitat, r.habitat_density && r.habitat_density !== "Unknown" ? r.habitat_density.toLowerCase() : ""].filter(Boolean).join(", ")))}
+      ${fact("Body mass", mass + (num(r.wing_mm) ? `, wing ${Math.round(r.wing_mm)} mm` : ""))}
+      ${fact("Lifestyle", esc(r.lifestyle))}
+      ${fact("Diet", esc([r.diet, r.trophic_niche && r.trophic_niche !== r.diet ? `AVONET niche: ${r.trophic_niche.toLowerCase()}` : ""].filter(Boolean).join("; ")))}
+      ${fact("Foraging", esc(r.stratum))}
+      ${fact("Nocturnal", r.nocturnal === true ? "Yes (EltonTraits)" : r.nocturnal === false ? "No" : "")}
+      ${fact("Migration", esc(r.migration))}
+      ${fact("Xeno-canto", num(r.xc_total) ? `${r.xc_total.toLocaleString("en-US")} recordings` + (num(r.xc_site_countries) ? `, ${r.xc_site_countries.toLocaleString("en-US")} from the site's country` : "") : "")}
+      ${fact(`At ${esc(r.site)}`, num(r.n_events) ? `${r.n_events.toLocaleString("en-US")} annotated calls, ${r.n_pos} labelled segments` : `${r.n_pos} labelled segments`)}
+      ${fact("Links", links(r) + ` <a class="ext" href="https://search.macaulaylibrary.org/catalog?taxonCode=${encodeURIComponent(r.ebird_code || "")}&mediaType=audio" target="_blank" rel="noopener" title="Audio in the Macaulay Library">Macaulay</a>`)}
+    </dl>
+    <div class="minis">
+      <div><div class="ctl-label">Calls per recorded hour at ${esc(r.site)} · local time</div>${activitySvg(r)}
+        <p class="meta">Hatched hours were never recorded at ${esc(site)}.</p></div>
+      <div><div class="ctl-label">Call frequency band at ${esc(r.site)} · kHz</div>${freqSvg(r)}</div>
+    </div>
+  </div>`;
+}
+
 function speciesShell() {
   const ms = metrics();
   if (!ms[state.metric]) state.metric = "ap";
   const opt = (v, label, cur) => `<option value="${v}"${v === cur ? " selected" : ""}>${esc(label)}</option>`;
   return `<h3>By species</h3>
-  <p class="lede">One row per site and species, so a species found at three sites appears three times. Average precision for a species with only a few positives is close to chance, so species with fewer than ${RARE} labelled segments are hidden unless you show them.</p>
+  <p class="lede">One row per site and species, so a species found at three sites appears three times. Click a name for its traits, calling times and call frequency at that site. Average precision for a species with only a few positives is close to chance, so species with fewer than ${RARE} labelled segments are hidden unless you show them.</p>
   <div class="subcontrols">
     <div class="ctl"><label class="ctl-label" for="sp-metric">Metric</label><select id="sp-metric">${Object.entries(ms).map(([k, [l]]) => opt(k, l, state.metric)).join("")}</select></div>
     <div class="ctl"><span class="ctl-label">Difference</span><span style="display:flex;gap:6px;align-items:center">
       <select id="sp-dA" aria-label="First model">${MODELS.map(m => opt(m.id, m.name, state.dA)).join("")}</select>−
       <select id="sp-dB" aria-label="Second model">${MODELS.map(m => opt(m.id, m.name, state.dB)).join("")}</select></span></div>
-    <div class="ctl"><label class="ctl-label" for="sp-q">Search</label><input id="sp-q" type="search" placeholder="Species, family or habitat" value="${esc(state.q)}"></div>
+    <div class="ctl"><label class="ctl-label" for="sp-q">Search</label><input id="sp-q" type="search" placeholder="Name, family or habitat" value="${esc(state.q)}"></div>
     <label class="check"><input id="sp-rare" type="checkbox"${state.hideRare ? " checked" : ""}> Hide species with fewer than ${RARE} positives</label>
+    <details class="colpick"><summary>Columns${state.cols.length ? ` (+${state.cols.length})` : ""}</summary>
+      <div class="colgrid">${EXTRA_AVAIL.map(k => `<label class="check"><input type="checkbox" data-col="${k}"${state.cols.includes(k) ? " checked" : ""}> <span title="${esc(EXTRA[k][1])}">${esc(EXTRA[k][0])}</span></label>`).join("")}</div>
+    </details>
   </div>
   ${legend()}
   <div id="sp-body"></div>`;
@@ -361,7 +488,7 @@ function speciesBody() {
   const k = state.metric;
   const all = D.species.filter(r => r.mode === state.mode && (state.site === "All" || r.site === state.site));
   const q = state.q.trim().toLowerCase();
-  const matched = q ? all.filter(r => [r.species, r.family, r.habitat].some(v => v && v.toLowerCase().includes(q))) : all;
+  const matched = q ? all.filter(r => [r.species, r.common_name, r.family, r.habitat].some(v => v && v.toLowerCase().includes(q))) : all;
   const rows = state.hideRare ? matched.filter(r => r.n_pos >= RARE) : matched;
   const hidden = matched.length - rows.length;
   for (const r of rows) {
@@ -374,8 +501,13 @@ function speciesBody() {
   const cols = [];
   if (state.site === "All") cols.push({k: "site", label: "Site", left: true, sort: r => r.site, cell: r => esc(r.site)});
   cols.push(
-    {k: "species", label: "Species", left: true, cell: r => `<td class="l"><span class="sp">${esc(cap(r.species))}</span>${r.family ? ` <span class="fam">${esc(r.family)}</span>` : ""}</td>`},
+    {k: "species", label: "Species", left: true, sort: r => r.common_name || r.species, cell: r => {
+      const open = state.open === rowKey(r);
+      return `<td class="l name"><button class="exp" data-row="${esc(rowKey(r))}" aria-expanded="${open}"><span class="tw">${open ? "▾" : "▸"}</span>` +
+        `<span class="cn">${esc(r.common_name || cap(r.species))}</span></button>${links(r)}<br><span class="sp">${esc(cap(r.species))}</span>${r.family ? ` <span class="fam">${esc(r.family)}</span>` : ""}</td>`;
+    }},
     {k: "habitat", label: "Habitat", left: true, cell: r => esc(r.habitat || "Unknown")},
+    ...state.cols.filter(k => EXTRA[k]).map(k => ({k, label: EXTRA[k][0], title: EXTRA[k][1], left: ["lifestyle", "stratum", "diet"].includes(k), cell: EXTRA[k][2], sort: EXTRA[k][3]})),
     {k: "n_pos", label: "Positives", title: "Labelled 5-second segments with the species", cell: r => `<td class="${r.n_pos < RARE ? "dim" : ""}">${r.n_pos}</td>`});
   if (scape) cols.push({k: "n_present", label: "Recordings", title: "Recording units where the species is present", cell: r => num(r.n_present) ? String(r.n_present) : "–"});
   for (const m of MODELS) cols.push({k: `${k}_${m.id}`, label: esc(m.name), cell: r => {
@@ -388,7 +520,154 @@ function speciesBody() {
     (hidden ? `, ${hidden} hidden with fewer than ${RARE} positives` : "") +
     `. Δ is ${esc(nameA)} − ${esc(nameB)} on ${esc(metrics()[k][0])}. Best model per row in bold.</p>`;
   if (!all.length) return `<div class="empty">No ${scape ? "soundscape" : "clips"} results for ${esc(state.site)} yet.</div>`;
-  return count + (rows.length ? table("species", cols, rows, {tall: true}) : `<div class="empty">No species match.</div>`);
+  return count + (rows.length ? table("species", cols, rows, {tall: true, detail, isOpen: r => state.open === rowKey(r)}) : `<div class="empty">No species match.</div>`);
+}
+
+
+// ---- by hour of day ---------------------------------------------------------------------
+// key -> [menu label, axis label, unit is 0-1, higher is better, description]
+const HMETRIC = {
+  AUROC: ["AUROC", "AUROC", true, true, "Chance a segment with the species scores higher than one without, averaged over the species heard in that hour. It does not depend on how common calls are, so it compares fairly across busy and quiet hours."],
+  recall: ["Recall at 90% precision", "Recall", true, true, "Share of (segment, species) presences the model finds, with each species’ threshold fixed so that 90% of its claims are right over the site’s whole test set."],
+  false_alarms_h: ["False alarms per hour", "False alarms per hour of audio", false, false, "Wrong (segment, species) claims per hour of audio at the same fixed thresholds: how often the model cries wolf at that time of day."],
+  precision: ["Precision at fixed thresholds", "Precision", true, true, "Share of claims that are right in that hour, at thresholds set for 90% precision over the whole site."],
+  cmAP: ["cmAP", "cmAP", true, true, "Average precision per species, averaged. AP falls when calls are rare, so quiet hours score lower even for an unchanged model: compare with care."],
+  top1: ["Top-1", "Top-1", true, true, "Share of segments with a bird where the top-scoring species is one that is there."],
+};
+const hh = h => String(h).padStart(2, "0");
+const HW = 760, HL = 56, HR = 16, hx = h => HL + (h + .5) * (HW - HL - HR) / 24, hbw = (HW - HL - HR) / 24;
+
+function hourAxis(y) {
+  return [0, 3, 6, 9, 12, 15, 18, 21].map(h => `<text class="tick" x="${hx(h)}" y="${y}" text-anchor="middle">${hh(h)}</text>`).join("") +
+    `<text class="tick" x="${HW - HR}" y="${y + 14}" text-anchor="end">local hour</text>`;
+}
+
+function activityChart(rows) {
+  const H = 120, top = 18, base = top + 80;
+  const by = Object.fromEntries(rows.map(r => [r.hour, r]));
+  const y = v => base - v * 80;
+  const out = [`<svg viewBox="0 0 ${HW} ${H + 16}" role="img" aria-label="Share of 5-second segments with a bird, by local hour">`,
+    `<defs><pattern id="hatch-h" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" class="hatch"/></pattern></defs>`,
+    `<text class="tick" x="${HL}" y="10">Share of 5-second segments with a bird</text>`];
+  for (const t of [0, .5, 1]) out.push(`<line class="gridline" x1="${HL}" x2="${HW - HR}" y1="${y(t)}" y2="${y(t)}"/>`,
+    `<text class="tick" x="${HL - 8}" y="${y(t) + 4}" text-anchor="end">${Math.round(t * 100)}%</text>`);
+  for (let h = 0; h < 24; h++) {
+    const r = by[h], x = hx(h) - hbw / 2;
+    if (!r) { out.push(`<rect fill="url(#hatch-h)" x="${x + 1}" y="${y(1)}" width="${hbw - 2}" height="80"><title>${hh(h)}:00 · not recorded (or under 30 min)</title></rect>`); continue; }
+    const tip = `${hh(h)}:00 · ${Math.round(r.bird_share * 100)}% of segments with a bird, ${r.species_per_seg.toFixed(2)} species per segment, ${r.n_species} ${state.site === "All" ? "site × species pairs" : "species"} heard · ${Math.round(r.minutes)} min in ${r.n_files} recordings`;
+    out.push(`<g><title>${esc(tip)}</title><rect x="${x}" y="${y(1)}" width="${hbw}" height="80" fill="transparent"/>` +
+      `<rect class="bar" x="${x + 3}" y="${y(r.bird_share)}" width="${hbw - 6}" height="${Math.max(1, 80 * r.bird_share)}" rx="2"/></g>`);
+  }
+  out.push(hourAxis(base + 16), "</svg>");
+  return `<div class="chart">${out.join("")}</div>`;
+}
+
+function metricChart(rows, k) {
+  const [, axis0, unit, higher] = HMETRIC[k];
+  const delta = rows.some(r => r.delta);
+  const axis = delta ? `${axis0}: change from each site’s all-day value` : axis0;
+  const vals = rows.flatMap(r => [r[k], r[k + "_lo"], r[k + "_hi"]]).filter(num);
+  if (!vals.length) return `<div class="empty">No values for this metric.</div>`;
+  let lo, hi;
+  if (delta) {  // symmetric around zero
+    const step0 = unit ? .05 : niceStep(Math.max(...vals.map(Math.abs)));
+    hi = Math.max(step0, Math.ceil(Math.max(...vals.map(Math.abs)) / step0) * step0); lo = -hi;
+  } else {
+    lo = unit ? Math.max(0, Math.floor(Math.min(...vals) * 10) / 10) : 0;
+    hi = unit ? Math.min(1, Math.ceil(Math.max(...vals) * 10) / 10) : Math.max(...vals) * 1.05;
+    if (hi - lo < .2 && unit) lo = Math.max(0, hi - .2);
+  }
+  const H = 250, top = 22, base = top + 200;
+  const y = v => base - (v - lo) / (hi - lo || 1) * 200;
+  const step = delta ? niceStepFine(hi, unit) : unit ? (hi - lo > .5 ? .2 : .1) : niceStep(hi);
+  const tfmt = t => delta ? (Math.abs(t) < 1e-9 ? "0" : (t > 0 ? "+" : "−") + (unit ? Math.abs(t).toFixed(2) : Math.round(Math.abs(t)))) : unit ? t.toFixed(1) : String(Math.round(t));
+  const out = [`<svg viewBox="0 0 ${HW} ${H + 16}" role="img" aria-label="${esc(axis)} by local hour">`,
+    `<text class="tick" x="${HL}" y="10">${esc(axis)}${higher ? " (higher is better)" : " (lower is better)"}${!delta && unit && lo > 0 ? " · axis starts at " + lo.toFixed(1) : ""}</text>`];
+  for (let i = 0, t = lo; t <= hi + 1e-9; t = lo + ++i * step) out.push(`<line class="gridline${delta && Math.abs(t) < 1e-9 ? " zero" : ""}" x1="${HL}" x2="${HW - HR}" y1="${y(t)}" y2="${y(t)}"/>`,
+    `<text class="tick" x="${HL - 8}" y="${y(t) + 4}" text-anchor="end">${tfmt(t)}</text>`);
+  const hours = [...new Set(rows.map(r => r.hour))].sort((a, b) => a - b);
+  MODELS.forEach((m, i) => {
+    const off = (i - (MODELS.length - 1) / 2) * 5;
+    const mr = Object.fromEntries(rows.filter(r => r.model === m.id).map(r => [r.hour, r]));
+    let path = "", prev = null;
+    for (const h of hours) {
+      const r = mr[h];
+      if (!r || !num(r[k])) { prev = null; continue; }
+      path += `${prev === h - 1 ? "L" : "M"}${(hx(h) + off).toFixed(1)} ${y(r[k]).toFixed(1)}`;
+      prev = h;
+    }
+    const marks = hours.filter(h => mr[h] && num(mr[h][k])).map(h => {
+      const r = mr[h], cx = hx(h) + off;
+      return (num(r[k + "_lo"]) ? `<line class="ci" x1="${cx}" x2="${cx}" y1="${y(r[k + "_lo"])}" y2="${y(r[k + "_hi"])}" opacity=".55"/>` : "") +
+        `<circle class="dot" cx="${cx}" cy="${y(r[k])}" r="4"/>`;
+    }).join("");
+    out.push(`<g class="${m.cls}"><path d="${path}" fill="none" stroke="var(--c)" stroke-width="2" stroke-linejoin="round"/>${marks}</g>`);
+  });
+  // hover columns: one tooltip per hour with every model
+  const fmt = v => !num(v) ? "–" : delta ? (v >= 0 ? "+" : "−") + (unit ? Math.abs(v).toFixed(3) : Math.abs(v).toFixed(1)) : unit ? f3(v) : v.toFixed(1);
+  for (const h of hours) {
+    const tip = `${hh(h)}:00\n` + MODELS.map(m => {
+      const r = rows.find(r => r.model === m.id && r.hour === h);
+      return r ? `${m.name}: ${fmt(r[k])}` + (num(r[k + "_lo"]) ? ` (95% CI ${fmt(r[k + "_lo"])}${delta ? " to " : "–"}${fmt(r[k + "_hi"])})` : "") : "";
+    }).filter(Boolean).join("\n");
+    out.push(`<rect class="hcol" x="${hx(h) - hbw / 2}" y="${top}" width="${hbw}" height="200"><title>${esc(tip)}</title></rect>`);
+  }
+  out.push(hourAxis(base + 16), "</svg>");
+  return `<div class="chart">${out.join("")}</div>`;
+}
+
+function niceStepFine(hi, unit) {
+  if (unit) return hi > .2 ? .1 : hi > .1 ? .05 : .025;
+  return niceStep(hi * 2) / 2;
+}
+
+function niceStep(max) {
+  const raw = max / 4, p = 10 ** Math.floor(Math.log10(raw || 1));
+  return [1, 2, 5, 10].map(m => m * p).find(s => s >= raw);
+}
+
+function hoursView() {
+  const all = D.hourly || [];
+  const sites = [...new Set(all.map(r => r.site))].filter(s => s !== "All");
+  if (!all.length) return `<div class="empty">No hourly results yet: run scripts/hourly.py.</div>`;
+  const rows = all.filter(r => r.site === state.site);
+  if (!rows.length) return `<div class="empty">No hourly results for ${esc(state.site)}${state.site === "NBP" ? ": its BirdSet metadata has no clock times" : ""}. Hourly results exist for ${esc(sites.join(", "))}${D.hourly_missing ? `; ${esc(D.hourly_missing)}` : ""}.</div>`;
+  const k = HMETRIC[state.hMetric] ? state.hMetric : "AUROC";
+  const [, , unit, , desc] = HMETRIC[k];
+  const picker = `<div class="subcontrols"><div class="ctl"><label class="ctl-label" for="h-metric">Metric</label>
+    <select id="h-metric">${Object.entries(HMETRIC).map(([v, [l]]) => `<option value="${v}"${v === k ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>`;
+  const act = rows.filter(r => r.model === MODELS[0].id);
+  const scope = state.site === "All"
+    ? `All sites with clock times (${esc(sites.join(", "))}). Sites record at different hours, and the hardest site (PER) records only at dawn, so pooling raw values would mostly show which sites record when. Instead, the performance chart shows, for each hour, how much each site’s value in that hour differs from the same site’s value over its whole day, averaged over the sites recorded then: above zero means that time of day is easier than usual. Activity bars pool the sites.`
+    : `${esc(state.site)} · ${esc(siteName(state.site))}. Hours with under 30 minutes of reviewed audio are left out.`;
+  const delta = rows.some(r => r.delta);
+  const fmt = v => !num(v) ? "–" : delta ? (v >= 0 ? "+" : "−") + (unit ? Math.abs(v).toFixed(3) : Math.abs(v).toFixed(1)) : unit ? f3(v) : v.toFixed(1);
+  const best = {};
+  for (const r of rows) if (num(r[k])) {
+    const b = best[r.hour];
+    if (b === undefined || (HMETRIC[k][3] ? r[k] > b : r[k] < b)) best[r.hour] = r[k];
+  }
+  const trows = act.map(a => {
+    const o = {hour: a.hour, minutes: a.minutes, n_files: a.n_files, bird_share: a.bird_share, n_species: a.n_species, sites: a.sites};
+    for (const m of MODELS) { const r = rows.find(r => r.model === m.id && r.hour === a.hour); o[m.id] = r ? r[k] : null; o[m.id + "_lo"] = r && r[k + "_lo"]; o[m.id + "_hi"] = r && r[k + "_hi"]; }
+    return o;
+  });
+  const cols = [
+    {k: "hour", label: "Hour", left: true, cell: r => `${hh(r.hour)}:00`},
+    {k: "minutes", label: "Minutes", cell: r => Math.round(r.minutes).toLocaleString("en-US")},
+    {k: "n_files", label: "Recordings", cell: r => String(r.n_files)},
+    {k: "bird_share", label: "With a bird", cell: r => Math.round(r.bird_share * 100) + "%"},
+    {k: "n_species", label: state.site === "All" ? "Pairs" : "Species", cell: r => String(r.n_species)},
+    ...(delta ? [{k: "sites", label: "Sites", left: true, cell: r => esc(r.sites)}] : []),
+    ...MODELS.map(m => ({k: m.id, label: modelCell(m), cell: r =>
+      `<td class="${num(r[m.id]) && r[m.id] === best[r.hour] ? "best" : ""}">${fmt(r[m.id])}` +
+      (num(r[m.id + "_lo"]) ? ` <span class="ci-txt">${fmt(r[m.id + "_lo"])}${delta ? " to " : "–"}${fmt(r[m.id + "_hi"])}</span>` : "") + "</td>"})),
+  ];
+  return `<div class="hours-head"><h3>By hour of day</h3>${picker}</div>
+    <p class="lede">Soundscape mode, whichever mode is selected: the clips carry no clock time. ${scope}</p>
+    ${activityChart(act)}
+    <p class="lede"><strong>${esc(HMETRIC[k][0])}.</strong> ${esc(desc)} Lines join consecutive recorded hours; whiskers are 95% intervals from resampling recordings within the hour.</p>
+    ${legend()}${metricChart(rows, k)}${table("hours", cols, trows)}`;
 }
 
 // ---- wiring --------------------------------------------------------------------------
@@ -397,15 +676,14 @@ const view = document.getElementById("view");
 function syncControls() {
   document.querySelectorAll(".seg[data-key]").forEach(seg => seg.querySelectorAll("button").forEach(b => {
     b.setAttribute("aria-pressed", String(state[seg.dataset.key] === b.dataset.v));
-    if (b.dataset.v === "biome") { b.disabled = state.site !== "All"; b.title = b.disabled ? "Needs All datasets" : ""; }
   }));
   document.getElementById("site").value = state.site;
 }
 
 function render() {
-  if (state.view === "biome" && state.site !== "All") state.view = "habitat";
   syncControls();
-  view.innerHTML = state.view === "overview" ? overview() : state.view === "species" ? speciesShell() : grouped();
+  view.innerHTML = state.view === "overview" ? overview() : state.view === "species" ? speciesShell()
+    : state.view === "hours" ? hoursView() : grouped();
   if (state.view === "species") document.getElementById("sp-body").innerHTML = speciesBody();
   save();
 }
@@ -424,9 +702,17 @@ document.querySelectorAll(".seg[data-key]").forEach(seg => seg.addEventListener(
 }));
 document.getElementById("site").addEventListener("change", e => { state.site = e.target.value; render(); });
 view.addEventListener("click", e => {
+  const x = e.target.closest("button.exp");
+  if (x) {
+    state.open = state.open === x.dataset.row ? null : x.dataset.row;
+    rerenderPart();
+    const again = [...view.querySelectorAll("button.exp")].find(b => b.dataset.row === x.dataset.row);
+    if (again) again.focus();
+    return;
+  }
   const b = e.target.closest("button[data-sort]");
   if (!b) return;
-  const numeric = !["site", "species", "habitat", "group", "model", "sites"].includes(b.dataset.sort);
+  const numeric = !["site", "species", "habitat", "group", "model", "sites", "lifestyle", "stratum", "diet"].includes(b.dataset.sort);
   onSort(b.dataset.table, b.dataset.sort, numeric);
   rerenderPart();
 });
@@ -436,6 +722,14 @@ view.addEventListener("change", e => {
   else if (id === "sp-dA") state.dA = e.target.value;
   else if (id === "sp-dB") state.dB = e.target.value;
   else if (id === "sp-rare") state.hideRare = e.target.checked;
+  else if (id === "g-by") state.groupBy = e.target.value;
+  else if (id === "h-metric") state.hMetric = e.target.value;
+  else if (e.target.dataset.col) {
+    const k = e.target.dataset.col;
+    state.cols = e.target.checked ? EXTRA_AVAIL.filter(c => c === k || state.cols.includes(c)) : state.cols.filter(c => c !== k);
+    const sum = view.querySelector(".colpick summary");
+    if (sum) sum.textContent = "Columns" + (state.cols.length ? ` (+${state.cols.length})` : "");
+  }
   else return;
   rerenderPart();
 });
@@ -444,6 +738,8 @@ view.addEventListener("input", e => {
   state.q = e.target.value;
   rerenderPart();
 });
+if (!VIEWS.includes(state.view)) { state.groupBy = state.view; state.view = "groups"; }  // v2 saved views
+if (GROUPING[tok]) { state.view = "groups"; state.groupBy = tok; }
 render();
 """
 
@@ -492,7 +788,8 @@ def published_section(p: pd.DataFrame) -> str:
 </section>"""
 
 
-def takeaways(h: pd.DataFrame, p: pd.DataFrame, g: pd.DataFrame, models: list[str]) -> str:
+def takeaways(h: pd.DataFrame, p: pd.DataFrame, g: pd.DataFrame, models: list[str],
+              hourly: pd.DataFrame | None = None) -> str:
     items = []
     clips = h[(h["mode"] == "clips")]
     allrow = clips[clips.site == "All"].set_index("model")
@@ -536,6 +833,18 @@ def takeaways(h: pd.DataFrame, p: pd.DataFrame, g: pd.DataFrame, models: list[st
         items.append(f"<li>Every model does better on species with many labelled segments ({escape(last)}: "
                      f"{hi.min():.2f}–{hi.max():.2f} mean AP) than on rare ones ({escape(first)}: "
                      f"{lo.min():.2f}–{lo.max():.2f}).</li>")
+    if hourly is not None and (hourly.site == "All").any():
+        a = hourly[hourly.site == "All"]
+        by = a.groupby("hour")["AUROC"].mean()
+        def hour_txt(hr: int) -> str:
+            r = a[a.hour == hr]
+            sign = lambda v: ("+" if v >= 0 else "−") + f"{abs(v):.2f}"
+            n_cls, n_rec = int(r.n_classes.max()), int(r.n_files.iloc[0])
+            return (f"{hr:02d}:00 ({sign(r.AUROC.min())} to {sign(r.AUROC.max())} across models; "
+                    f"{escape(r.sites.iloc[0].replace(' ', ', '))}, {n_rec} recordings, {n_cls} species)")
+        items.append(f"<li>By hour of day, against each site's own all-day AUROC, the models do worst at "
+                     f"{hour_txt(int(by.idxmin()))} and best at {hour_txt(int(by.idxmax()))}. Hours other than "
+                     f"dawn rest on one to three sites; see the Hours view.</li>")
     return f'<ul class="takeaways">{"".join(items)}</ul>'
 
 
@@ -557,6 +866,17 @@ def main() -> None:
     sp = pd.read_csv(args.report / "species.csv")
     g = pd.read_csv(args.report / "groups.csv")
     sites_df = pd.read_csv(args.sites)
+    effort_f = args.sites.with_name("site_effort.csv")
+    effort = ({s: g.sort_values("hour")["minutes"].round(1).tolist() for s, g in pd.read_csv(effort_f).groupby("site")}
+              if effort_f.exists() else {})
+    hourly_f = args.report / "hourly.csv"
+    hourly = pd.read_csv(hourly_f) if hourly_f.exists() else None
+    hourly_missing = None
+    if hourly is not None:
+        lacking = sorted(set(h[h["mode"] == "scape"].site) - {"All"} - set(hourly.site) - {"NBP"})
+        hourly_missing = (f"{', '.join(lacking)} not yet (some predictions not cached)" if lacking else None)
+    xc_f = args.sites.with_name("xc_counts.csv")
+    xc_date = pd.read_csv(xc_f)["query_date"].max() if xc_f.exists() else None
     present = set(h.site) - {"All"}
     sites_df = sites_df[sites_df.site.isin(present)]
     models = [m for m in MODELS if m in set(h.model)] + sorted(set(h.model) - set(MODELS))
@@ -568,7 +888,10 @@ def main() -> None:
         "sites": records(sites_df),
         "headline": records(h),
         "groups": records(g),
-        "species": records(sp.drop(columns=["migration", "biome"], errors="ignore")),
+        "species": records(sp.drop(columns=["biome"], errors="ignore")),
+        "effort": effort,
+        "hourly": records(hourly) if hourly is not None else [],
+        "hourly_missing": hourly_missing,
     }
     blob = json.dumps(data, separators=(",", ":"), ensure_ascii=False).replace("</", "<\\/")
     site_opts = "".join(f'<option value="{escape(s)}">{escape(s)} · {escape(n)}</option>'
@@ -576,6 +899,8 @@ def main() -> None:
     scape_sites = sorted(set(h[h["mode"] == "scape"].site) - {"All"})
     clip_sites = sorted(set(h[h["mode"] == "clips"].site) - {"All"})
 
+    xc_note = (f" Xeno-canto counts were queried on {xc_date}: they are today's counts, larger than what any model "
+               "trained on, and xeno-canto's IOC names can split or lump differently from eBird's." if xc_date else "")
     page = f"""<meta charset="utf-8">
 <title>{escape(args.title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -593,7 +918,7 @@ def main() -> None:
 </header>
 <section id="summary">
   <h2>Summary</h2>
-  {takeaways(h, p, g, models)}
+  {takeaways(h, p, g, models, hourly)}
 </section>
 <section id="explore">
   <h2>Explore the results</h2>
@@ -605,7 +930,7 @@ def main() -> None:
       <select id="site"><option value="All">All datasets</option>{site_opts}</select></div>
     <div class="ctl"><span class="ctl-label" id="l-view">View</span>
       <div class="seg" data-key="view" aria-labelledby="l-view">
-        <button data-v="overview">Overview</button><button data-v="habitat">Habitat</button><button data-v="biome">Site biome</button><button data-v="prevalence">Prevalence</button><button data-v="species">Species</button></div></div>
+        <button data-v="overview">Overview</button><button data-v="groups">Groups</button><button data-v="species">Species</button><button data-v="hours">Hours</button></div></div>
   </div>
   <div id="view" aria-live="polite"></div>
 </section>
@@ -623,6 +948,13 @@ def main() -> None:
     <li>Site biomes are WWF biomes assigned per site (configs/reference/sites.csv); the sites are small areas, so
     a label describes the site's setting, not every recorder.</li>
     <li>POW is BirdSet's validation set, not a test set. It is included here like the others.</li>
+    <li>Calling times and call frequency bands come from BirdSet's call-level annotations (scripts/site_calls.py).
+    BirdSet's “local_time” is UTC for PER and SSW (their file names end in Z); those are converted to local time.
+    Most sites record only around dawn (PER 05–06 h, POW and HSN about 05–09 h); SSW records all day and UHH 05–23 h,
+    so only those two show full daily patterns. Activity is calls per recorded hour, and unrecorded hours are shown as
+    unknown. NBP has no times or frequency boxes.</li>
+    <li>Body mass, lifestyle and habitat are AVONET; diet, foraging stratum and the nocturnal flag are EltonTraits 1.0,
+    matched to eBird names through AVONET's crosswalk.{xc_note}</li>
   </ul>
   <details><summary>Metric definitions</summary>
   <dl>
@@ -636,7 +968,8 @@ def main() -> None:
   </dl>
   </details>
 </section>
-<footer>Habitat data: AVONET, Tobias et al. 2022, Ecology Letters 25:581 (CC BY 4.0).
+<footer>Traits: AVONET, Tobias et al. 2022, Ecology Letters 25:581 (CC BY 4.0); EltonTraits 1.0, Wilman et al. 2014,
+Ecology 95:2027 (CC0). Common names and links: eBird/Clements taxonomy 2025; xeno-canto.org; Macaulay Library.
 Published figures: van Merriënboer et al. 2025 (Perch 2.0); Rauch et al. 2024 (BirdSet, arXiv:2403.10380).</footer>
 </main>
 <script type="application/json" id="report-data">{blob}</script>
