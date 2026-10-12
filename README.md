@@ -87,7 +87,7 @@ AUROC 0.5. Before `synonyms.yaml` had its current entries, Perch V2 was
 
 ```bash
 python -I scripts/build_report.py results/taxfix_v1 results/full_*   # tables -> results/report/*.csv
-python -I scripts/render_report.py                                  # page   -> results/report/index.html
+python -I scripts/render_report.py                                  # page   -> docs/index.html
 ```
 
 This writes the report's tables to `results/report/`. Clips and soundscape
@@ -95,7 +95,10 @@ runs are both read; if two runs hold the same (mode, site, model), the later
 one wins.
 - `headline.csv`: mode × site × model, plus an `All` row per mode. That row
   is the mean of the per-site values over the sites every model has
-  finished.
+  finished. Soundscape rows add evidence precision at the 90%-precision
+  threshold (`rec_evidence90`, and `rec_evidence90_cond` for claims right
+  at recording level). Each row records its eval set, the species the model
+  can't predict (`n_uncovered`) and the `birdnet` package version.
 - `published.csv`: the published-figure check.
 - `species.csv`: one row per mode × site × species. Each row has the
   positives count, the species' AVONET traits, the site biome, and each
@@ -106,6 +109,14 @@ one wins.
   - Grouping is AVONET primary habitat, site biome, or prevalence.
   - The prevalence bins (1–9, 10–49, 50+ labelled segments) were fixed in
     advance.
+- `weakest.csv`: a fixed rule, written before looking: in clips mode, the
+  20 (site, species) pairs with at least 10 labelled segments where the best
+  AP any model gets is lowest.
+
+Only public BirdSet eval sets (`birdset_*`) are read. Any other eval set in
+the run folders is skipped with a warning; `--allow-nonpublic` keeps them for
+a local page, and `render_report.py` refuses to write such tables into
+`docs/`.
 
 The habitat and family columns need `configs/reference/species_traits.csv`,
 from AVONET (Tobias et al. 2022, *Ecology Letters* 25:581, CC BY 4.0).
@@ -182,8 +193,9 @@ A group's unit is a (site, species) pair, and its 95% interval comes from
 resampling those pairs. Groups use only sites that every model has finished,
 so the models are compared on the same pairs.
 
-The page has a static summary and published check. Below them is an
-explorer with three controls:
+The page reads as a lab report: Introduction, Methods, Results and
+Conclusion, then Reproduce and References. Results 3.4 is an explorer with
+three controls:
 - Mode: clips or soundscapes.
 - Dataset: all sites, or one site.
 - View: overview, groups (by habitat, site biome, prevalence or a species
@@ -195,6 +207,50 @@ has:
 - A model-vs-model difference column.
 - A search box.
 - A filter for species with fewer than 10 positives. It is on by default.
+
+A link to a site, view or grouping (`#POW`, `#species`, `#habitat`) opens
+the explorer there; any other `#id` scrolls to that section.
+
+### Publishing the report
+
+The page is published with GitHub Pages from `docs/`:
+
+```bash
+python -I scripts/build_report.py results/full_*      # tables -> results/report/ (not committed)
+python -I scripts/hourly.py                            # by hour of day -> results/report/hourly.csv
+python -I scripts/fig_spectrogram.py                   # figure, og.png and clip -> docs/assets/
+python -I scripts/render_report.py                     # page -> docs/index.html
+```
+
+Then commit `docs/`. In the repository's settings, choose Settings → Pages →
+Deploy from a branch → `main`, folder `/docs`.
+
+- `docs/index.html` is self-contained apart from `docs/assets/`: the IBM
+  Plex fonts (latin and latin-ext `woff2`, with `OFL.txt`), the spectrogram
+  images, `og.png` (the social preview) and `clip.mp3`. `docs/.nojekyll`
+  stops GitHub's Jekyll step. The page loads nothing from other hosts.
+- `results/` and `cache/` stay ignored: the tables are rebuilt locally and
+  only the rendered page is committed.
+- **Prose** lives in `report/sections/<section>.html`, plain HTML. Numbers
+  are written as data tokens, `{{token}}` or `{{token|fmt}}` (`3f`, `2f`,
+  `pct`, `int`, `range`), filled from the tables by
+  `scripts/report_content.py`; generated tables and figures are
+  `{{block:name}}`; repo files are `{{file:path}}`, which become links when
+  `repo_url` is set. An unknown token fails the render, and facts no section
+  uses are listed as warnings. `report/blocks/*.html` are static blocks
+  (the model table).
+- **Settings** are in `configs/report.yaml`: title, author, description,
+  `repo_url` and `figure_audio`.
+- **The figure clip** is chosen by a fixed rule (`fig_spectrogram.py
+  --choose`) and recorded in `configs/reference/figure_clip.yaml`. It is
+  POW audio, CC0.
+- **Site table:** `scripts/birdset_labels.py META_DIR --reference
+  configs/reference/site_density.csv` writes the label-density table from
+  BirdSet's metadata.
+- **Private-data guard:** the page never shows anything but public BirdSet
+  eval sets. `build_report.py` skips other eval sets, and
+  `render_report.py` refuses to write non-public rows under `docs/`, even
+  with `--allow-nonpublic`.
 
 ## How it works
 
