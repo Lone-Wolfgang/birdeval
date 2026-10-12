@@ -1,0 +1,4 @@
+site,model,metric,ours,pub_lo,pub_hi,delta,flag
+HSN,perch_v2,AUROC,0.8963,0.896,0.915,0.0,False
+HSN,perch_v2,cmAP,0.5289,0.504,0.533,0.0,False
+HSN,perch_v2,top1,0.6556,0.62,0.659,0.0,False

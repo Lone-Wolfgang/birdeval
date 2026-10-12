@@ -27,6 +27,11 @@ All metrics use the `all` scope. A group's unit is a (site, species) pair; its
 CI resamples those pairs (2000 draws, seed 0). Groups use only sites that every
 model has finished in that mode, so models are compared on the same pairs.
 If two runs hold the same (mode, site, model), the later RUN_DIR wins.
+
+Only public BirdSet eval sets (names starting birdset_) are read; any other
+eval set in the run folders is skipped with a warning. --allow-nonpublic keeps
+them (site = eval set name), for local use only: render_report.py refuses to
+write such tables into docs/.
 """
 
 from __future__ import annotations
@@ -46,6 +51,7 @@ from compare_published import compare, load_summaries, ours  # noqa: E402
 from birdeval.taxonomy import normalize_sci  # noqa: E402
 
 SITE = re.compile(r"^birdset_([A-Z]{3})(_scape)?$")
+PUBLIC = "birdset_"
 REF = Path("configs/reference")
 TRAITS = REF / "species_traits.csv"
 SITES = REF / "sites.csv"
@@ -72,13 +78,27 @@ MIN_GROUP = 5  # categories with fewer (site, species) pairs merge into "Other"
 KEY = ["mode", "site", "model"]
 
 
+def public_only(evalsets: pd.Series, allow_nonpublic: bool) -> pd.Series:
+    """Mask of eval sets to keep; warns once about each non-public one."""
+    public = evalsets.str.startswith(PUBLIC)
+    for e in sorted(set(evalsets[~public])):
+        print(f"warning: {e} is not a public BirdSet eval set: "
+              + ("kept (--allow-nonpublic)" if allow_nonpublic else "skipped"))
+    return public | allow_nonpublic
+
+
 def site_mode(evalset: pd.Series) -> pd.DataFrame:
     m = evalset.str.extract(SITE)
-    return pd.DataFrame({"site": m[0], "mode": np.where(m[1].notna(), "scape", "clips")}, index=evalset.index)
+    scape = m[1].notna() | evalset.str.endswith("_scape")
+    # non-BirdSet sets (kept only with --allow-nonpublic) are their own "site";
+    # other birdset_ sets (e.g. smoke subsets) have none and are dropped
+    site = m[0].where(evalset.str.startswith(PUBLIC), evalset.str.removesuffix("_scape"))
+    return pd.DataFrame({"site": site, "mode": np.where(scape, "scape", "clips")}, index=evalset.index)
 
 
-def summaries(runs: list[Path]) -> pd.DataFrame:
+def summaries(runs: list[Path], allow_nonpublic: bool = False) -> pd.DataFrame:
     df = load_summaries(runs)
+    df = df[public_only(df["evalset"], allow_nonpublic)].copy()
     df[["site", "mode"]] = site_mode(df["evalset"])
     df = df[df["site"].notna() & (df["classes"] == "all")].copy()
     # in clips mode each clip is its own recording unit, so recording cmAP repeats cmAP
@@ -88,7 +108,7 @@ def summaries(runs: list[Path]) -> pd.DataFrame:
 
 def headline(s: pd.DataFrame) -> pd.DataFrame:
     cols = ["cmAP", "cmAP_lo", "cmAP_hi", "AUROC", "top1", "rec_cmAP", "rec_recall90"]
-    out = s[KEY + cols + ["n_classes_scored", "n_segments"]].rename(
+    out = s[KEY + ["evalset"] + cols + ["n_classes_scored", "n_segments"]].rename(
         columns={"n_classes_scored": "n_species", "n_segments": "n_segs"})
     rows = []
     for mode, sub in out.groupby("mode"):
@@ -109,23 +129,29 @@ def complete_sites(df: pd.DataFrame) -> list[str]:
     return sorted(per[per == n].index)
 
 
-def per_class(runs: list[Path]) -> pd.DataFrame:
+def per_class(runs: list[Path], allow_nonpublic: bool = False) -> pd.DataFrame:
     """Long table: one row per run x mode x site x model x species."""
     frames = []
     for d in runs:
-        for f in sorted(d.glob("birdset_*/*/per_class_all.csv")):
-            m = SITE.match(f.parent.parent.name)
-            if not m:
+        files = sorted(d.glob("*/*/per_class_all.csv"))
+        names = pd.Series([f.parent.parent.name for f in files], dtype=str)
+        keep = public_only(names, allow_nonpublic) if len(files) else []
+        for f, ok in zip(files, keep):
+            if not ok:
+                continue
+            evalset = f.parent.parent.name
+            sm = site_mode(pd.Series([evalset])).iloc[0]
+            if pd.isna(sm["site"]):
                 continue
             pc = pd.read_csv(f).rename(columns={"class": "species"})
             rec_f = f.with_name("per_species_recording_all.csv")
             if rec_f.exists():
                 rec = pd.read_csv(rec_f)[["species", "n_present", "ap", "recall_at_p90"]].rename(
                     columns={"ap": "rec_ap", "recall_at_p90": "recall90"})
-                if not m.group(2):  # clips are their own units: rec AP is AP, n_present is n_pos
+                if sm["mode"] == "clips":  # clips are their own units: rec AP is AP, n_present is n_pos
                     rec = rec.drop(columns=["rec_ap", "n_present"])
                 pc = pc.merge(rec, on="species", how="left")
-            frames.append(pc.assign(mode="scape" if m.group(2) else "clips", site=m.group(1), model=f.parent.name))
+            frames.append(pc.assign(mode=sm["mode"], site=sm["site"], model=f.parent.name, evalset=evalset))
     pc = pd.concat(frames, ignore_index=True)
     return pc.drop_duplicates(KEY + ["species"], keep="last")
 
@@ -167,6 +193,7 @@ def species_table(pc: pd.DataFrame, info: pd.DataFrame) -> pd.DataFrame:
     wide.columns = [f"{metric}_{model}" for metric, model in wide.columns]
     wide = wide.dropna(axis=1, how="all")
     counts = pc.groupby(idx)[[c for c in ["n_pos", "n_present"] if c in pc]].max()
+    counts["evalset"] = pc.groupby(idx)["evalset"].first()
     out = counts.join(wide).reset_index().merge(info, on=["site", "species"], how="left")
     return out.sort_values(idx).round(4)
 
@@ -235,10 +262,12 @@ def main() -> None:
     ap.add_argument("runs", nargs="+", type=Path)
     ap.add_argument("--out", type=Path, default=Path("results/report"))
     ap.add_argument("--ref", type=Path, default=Path("configs/reference/published.yaml"))
+    ap.add_argument("--allow-nonpublic", action="store_true",
+                    help="keep eval sets that aren't public BirdSet sets (local use only; never publish)")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
-    headline(summaries(args.runs)).to_csv(args.out / "headline.csv", index=False)
+    headline(summaries(args.runs, args.allow_nonpublic)).to_csv(args.out / "headline.csv", index=False)
 
     pub = compare(ours(args.runs), yaml.safe_load(args.ref.read_text()), tol=0.02)
     pub = pub[pub["pub_lo"].notna()]
@@ -247,7 +276,7 @@ def main() -> None:
 
     if not TRAITS.exists():
         sys.exit(f"no {TRAITS}: run scripts/avonet_traits.py first")
-    pc = per_class(args.runs)
+    pc = per_class(args.runs, args.allow_nonpublic)
     info = species_info(pc, pd.read_csv(SITES))
     species_table(pc, info).to_csv(args.out / "species.csv", index=False)
     groups_table(pc, info).to_csv(args.out / "groups.csv", index=False)

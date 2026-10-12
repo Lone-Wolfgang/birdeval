@@ -15,10 +15,13 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import subprocess
+import sys
 from html import escape
 from pathlib import Path
 
 import pandas as pd
+import yaml
 
 MODELS = {  # fixed order and colour slot: colour follows the model, never its rank
     "birdnet_2.4": ("BirdNET 2.4", "m1"),
@@ -26,8 +29,30 @@ MODELS = {  # fixed order and colour slot: colour follows the model, never its r
     "perch_v2": ("Perch V2", "m3"),
 }
 
+FONTS = [  # (family, weight, file stem); latin + latin-ext subsets in docs/assets/fonts/
+    ("IBM Plex Sans", 400, "ibm-plex-sans"), ("IBM Plex Sans", 500, "ibm-plex-sans"),
+    ("IBM Plex Sans", 600, "ibm-plex-sans"), ("IBM Plex Sans", 700, "ibm-plex-sans"),
+    ("IBM Plex Sans Condensed", 600, "ibm-plex-sans-condensed"),
+    ("IBM Plex Mono", 400, "ibm-plex-mono"), ("IBM Plex Mono", 600, "ibm-plex-mono"),
+]
+SUBSETS = {  # fontsource's unicode ranges
+    "latin": "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,"
+             "U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD",
+    "latin-ext": "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,"
+                 "U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF",
+}
+
+
+def font_css(base: str = "assets/fonts") -> str:
+    return "\n".join(
+        f"@font-face {{ font-family: '{fam}'; font-style: normal; font-weight: {w}; font-display: swap; "
+        f"src: url({base}/{stem}-{sub}-{w}-normal.woff2) format('woff2'); unicode-range: {rng}; }}"
+        for fam, w, stem in FONTS for sub, rng in SUBSETS.items())
+
+
 CSS = """
-/* Layout: one reading column; charts and tables full column width, tables scroll on their own. */
+/* Layout: a contents rail beside one reading column (stacked on narrow screens);
+   charts and tables take the column width and scroll on their own. */
 :root {
   --bg: #f5f7f6; --surface: #ffffff; --fg: #17201d; --muted: #56635e; --rule: #d9e0dc;
   --accent: #1d5c4b; --accent-fg: #ffffff; --grid: #e6ebe8; --hover: #eef3f0;
@@ -45,11 +70,45 @@ CSS = """
   --bg: #111816; --surface: #18211e; --fg: #e4ebe8; --muted: #9aa8a2; --rule: #2c3833;
   --accent: #7cc7ae; --accent-fg: #0d1513; --grid: #24302b; --hover: #1f2a26;
   --m1: #56b4e9; --m2: #e69f00; --m3: #3cc79a; --ok: #6fcf8f; --warn: #f0b04a; color-scheme: dark }
-body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--body); }
-main { max-width: 960px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px;
-  display: flex; flex-direction: column; gap: 44px; }
-@media (max-width: 520px) { main { padding-inline: 16px; } }
+html { scroll-padding-top: 16px; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--body); margin: 0; }
+.page { max-width: 1240px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; }
+@media (min-width: 1180px) { .page { grid-template-columns: 210px minmax(0, 960px); column-gap: 48px; justify-content: center; }
+  .page > header, .page > footer { grid-column: 2; } .page > nav.toc { grid-column: 1; grid-row: 1 / span 3; } }
+@media (max-width: 520px) { .page { padding-inline: 16px; } html { scroll-padding-top: 64px; } }
+main { display: flex; flex-direction: column; gap: 56px; min-width: 0; }
 header { display: flex; flex-direction: column; gap: 10px; }
+.byline { font-size: 15px; }
+.byline a, .prose a, footer a, .meta a { color: var(--accent); text-underline-offset: 3px; }
+article.report { display: flex; flex-direction: column; gap: 64px; }
+article.report > section { display: flex; flex-direction: column; gap: 18px; }
+article.report > section > section { margin-top: 18px; }
+article.report > section > section { display: flex; flex-direction: column; gap: 14px; }
+.secnum { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: .5ch; }
+code { font: .92em var(--mono); background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 0 4px; }
+
+/* Contents: sticky rail on wide screens, a collapsible bar on narrow ones */
+nav.toc { position: sticky; top: env(safe-area-inset-top, 0px); align-self: start; z-index: 5; }
+nav.toc .toc-toggle { display: none; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+nav.toc ol ol { padding-left: 12px; margin: 2px 0 6px; }
+nav.toc a { display: block; padding: 4px 8px; border-left: 2px solid transparent; color: var(--muted);
+  text-decoration: none; font-size: 13.5px; line-height: 1.35; }
+nav.toc a:hover { color: var(--fg); }
+nav.toc a.current { color: var(--fg); border-left-color: var(--accent); font-weight: 600; }
+nav.toc .toc-title { font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 0 10px 10px; }
+@media (min-width: 1180px) { nav.toc { top: 24px; max-height: calc(100vh - 48px); overflow-y: auto; } }
+@media (max-width: 1179px) {
+  nav.toc { margin-inline: -20px; padding: 8px 20px; background: var(--bg); border-bottom: 1px solid var(--rule); }
+  nav.toc .toc-title { display: none; }
+  nav.toc .toc-toggle { display: flex; width: 100%; justify-content: space-between; gap: 12px; font: 600 14px/1.2 var(--body);
+    color: var(--fg); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 9px 12px; cursor: pointer; }
+  nav.toc .toc-now { color: var(--muted); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  nav.toc .toc-list { display: none; padding-top: 8px; max-height: 70vh; overflow-y: auto; }
+  nav.toc.open .toc-list { display: block; }
+}
+@media (max-width: 520px) { nav.toc { margin-inline: -16px; padding-inline: 16px; } }
 .eyebrow { font: 600 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
 h1 { font: 600 clamp(28px, 5vw, 40px)/1.1 var(--display); margin: 0; text-wrap: balance; }
 h2 { font: 600 22px/1.2 var(--display); margin: 0; text-wrap: balance; }
@@ -164,7 +223,7 @@ dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margi
 dt { font: 600 13px/1.5 var(--mono); }
 dd { margin: 0; min-width: 0; }
 .notes { display: flex; flex-direction: column; gap: 8px; padding-left: 1.2em; margin: 0; max-width: 74ch; }
-footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule); padding-top: 16px; }
+footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule); padding-top: 16px; display: flex; flex-direction: column; gap: 6px; }
 @media (max-width: 520px) { dl { grid-template-columns: 1fr; } dd { margin-bottom: 6px; } input[type="search"] { width: 100%; } }
 """
 
@@ -180,9 +239,17 @@ const state = Object.assign(
   {mode: "clips", site: "All", view: "overview", groupBy: "habitat", metric: "ap", dA: MODELS[0].id,
    dB: MODELS[MODELS.length - 1].id, hMetric: "AUROC", q: "", hideRare: true, sort: {}, cols: [], open: null},
   load());
+// A hash that names a site, view or grouping (#POW, #species, #habitat) drives the
+// explorer; any other hash is a section id and the browser scrolls to it.
+const isExplorerToken = t => SITE_ORDER[t] !== undefined || VIEWS.includes(t) || GROUPING_KEYS.includes(t);
+const GROUPING_KEYS = ["habitat", "biome", "prevalence", "mass", "lifestyle", "stratum", "diet", "call_freq", "xc"];
 const tok = location.hash.slice(1);
-if (SITE_ORDER[tok] !== undefined) state.site = tok;
-if (VIEWS.includes(tok)) state.view = tok;
+function applyToken(t) {
+  if (SITE_ORDER[t] !== undefined) state.site = t;
+  if (VIEWS.includes(t)) state.view = t;
+  if (GROUPING_KEYS.includes(t)) { state.view = "groups"; state.groupBy = t; }
+}
+if (isExplorerToken(tok)) applyToken(tok);
 if (state.site !== "All" && SITE_ORDER[state.site] === undefined) state.site = "All";
 
 function load() { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; } }
@@ -739,8 +806,50 @@ view.addEventListener("input", e => {
   rerenderPart();
 });
 if (!VIEWS.includes(state.view)) { state.groupBy = state.view; state.view = "groups"; }  // v2 saved views
-if (GROUPING[tok]) { state.view = "groups"; state.groupBy = tok; }
 render();
+const explorer = document.getElementById("explorer");
+if (isExplorerToken(tok) && explorer) explorer.scrollIntoView();
+window.addEventListener("hashchange", () => {
+  const t = location.hash.slice(1);
+  if (!isExplorerToken(t)) return;
+  applyToken(t); render();
+  if (explorer) explorer.scrollIntoView();
+});
+"""
+
+
+TOC_JS = r"""
+// Contents: highlight the section in view; on narrow screens the list folds into a bar.
+(() => {
+  const nav = document.querySelector("nav.toc");
+  if (!nav) return;
+  const links = [...nav.querySelectorAll(".toc-list a")];
+  const byId = Object.fromEntries(links.map(a => [a.getAttribute("href").slice(1), a]));
+  const now = nav.querySelector(".toc-now");
+  const toggle = nav.querySelector(".toc-toggle");
+  toggle.addEventListener("click", () => {
+    const open = nav.classList.toggle("open");
+    toggle.setAttribute("aria-expanded", String(open));
+  });
+  nav.addEventListener("click", e => {
+    if (e.target.closest(".toc-list a")) { nav.classList.remove("open"); toggle.setAttribute("aria-expanded", "false"); }
+  });
+  const targets = links.map(a => document.getElementById(a.getAttribute("href").slice(1))).filter(Boolean);
+  const visible = new Set();
+  const mark = () => {
+    // the first section (in page order) that is in view; subsections win over their parent
+    const cur = targets.filter(t => visible.has(t.id)).sort((a, b) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1).pop();
+    if (!cur) return;
+    links.forEach(a => a.classList.toggle("current", a === byId[cur.id]));
+    if (now) now.textContent = byId[cur.id].textContent;
+  };
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => e.isIntersecting ? visible.add(e.target.id) : visible.delete(e.target.id));
+    mark();
+  }, {rootMargin: "0px 0px -70% 0px"});
+  targets.forEach(t => io.observe(t));
+})();
 """
 
 
@@ -775,17 +884,14 @@ def published_section(p: pd.DataFrame) -> str:
                      f'{fmt(r["pub_lo"])}–{fmt(r["pub_hi"])}', f'{r["delta"]:+.3f}', chip])
     n_ok = int((~p["flag"].astype(str).eq("True")).sum())
     sites = ", ".join(sorted(p["site"].unique()))
-    return f"""<section id="published">
-  <h2>Check against published figures</h2>
-  <p class="lede">Perch V2 in clips mode against the three Perch 2.0 variants in van Merriënboer et al. 2025
+    return f"""<p class="lede">Perch V2 in clips mode against the three Perch 2.0 variants in van Merriënboer et al. 2025
   (arXiv:2508.04665, Appendix C, Table 4). A value counts as within if it is no more than 0.02 outside the published
   range. {n_ok} of {len(p)} values on {escape(sites)} are within.</p>
   <details><summary>Show the table</summary>
   {static_table(["Site", "Metric", "Ours", "Published", "Distance", "Result"], body, left_cols=2)}
   </details>
   <p class="meta">POW is not in the Perch 2.0 table: BirdSet uses it as a validation set.
-  BirdNET has no published per-site figures; BirdSet left it out because its training data may overlap the test sets.</p>
-</section>"""
+  BirdNET has no published per-site figures; BirdSet left it out because its training data may overlap the test sets.</p>"""
 
 
 def takeaways(h: pd.DataFrame, p: pd.DataFrame, g: pd.DataFrame, models: list[str],
@@ -852,19 +958,111 @@ def records(df: pd.DataFrame) -> list[dict]:
     return json.loads(df.to_json(orient="records"))  # NaN -> null
 
 
+SECTIONS = [  # (id, number, title, [(sub id, number, title)])
+    ("intro", "1", "Introduction", []),
+    ("methods", "2", "Methods", [
+        ("methods-sound", "2.1", "From sound to prediction"),
+        ("methods-dataset", "2.2", "Dataset: BirdSet"),
+        ("methods-models", "2.3", "Models: shared approach, different decisions"),
+        ("methods-pipeline", "2.4", "Running the models side by side"),
+        ("methods-criteria", "2.5", "Evaluation criteria"),
+    ]),
+    ("results", "3", "Results", [
+        ("results-replication", "3.1", "Replication"),
+        ("results-baseline", "3.2", "Overall baseline"),
+        ("results-weakest", "3.3", "Where performance is weakest"),
+        ("explorer", "3.4", "Species-level data and the explorer"),
+    ]),
+    ("conclusion", "4", "Conclusion", []),
+    ("reproduce", "", "Reproduce this", []),
+    ("references", "", "References and licences", []),
+]
+
+
+def toc() -> str:
+    def li(i, n, t, subs=()):
+        inner = f"<ol>{''.join(li(*x) for x in subs)}</ol>" if subs else ""
+        return f'<li><a href="#{i}">{escape((n + " ") if n else "")}{escape(t)}</a>{inner}</li>'
+    items = "".join(li(i, n, t, subs) for i, n, t, subs in SECTIONS)
+    return (f'<nav class="toc" aria-label="Contents"><div class="toc-title">Contents</div>'
+            f'<button class="toc-toggle" aria-expanded="false" aria-controls="toc-list">Contents'
+            f'<span class="toc-now"></span></button>'
+            f'<div class="toc-list" id="toc-list"><ol>{items}</ol></div></nav>')
+
+
+def heading(level: int, num: str, title: str) -> str:
+    n = f'<span class="secnum">{escape(num)}</span>' if num else ""
+    return f"<h{level}>{n}{escape(title)}</h{level}>"
+
+
+def section(sid: str, body: dict[str, str]) -> str:
+    """One top-level section with its subsections; body maps an id to its inner HTML."""
+    _, num, title, subs = next(x for x in SECTIONS if x[0] == sid)
+    inner = "".join(f'<section id="{i}">{heading(3, n, t)}{body.get(i, "")}</section>' for i, n, t in subs)
+    return f'<section id="{sid}">{heading(2, num, title)}{body.get(sid, "")}{inner}</section>'
+
+
+def repo_link(path: str, repo_url: str) -> str:
+    """A repo file: a link when the repo URL is known, else code text."""
+    if repo_url:
+        return f'<a href="{escape(repo_url.rstrip("/"))}/blob/main/{escape(path)}"><code>{escape(path)}</code></a>'
+    return f"<code>{escape(path)}</code>"
+
+
+def git_version() -> str | None:
+    try:
+        out = subprocess.run(["git", "describe", "--always", "--dirty"], capture_output=True, text=True,
+                             timeout=10, cwd=Path(__file__).resolve().parent)
+        return out.stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def nonpublic_rows(*tables: pd.DataFrame | None) -> list[str]:
+    """Eval sets in the input tables that aren't public BirdSet sets."""
+    bad = set()
+    for t in tables:
+        if t is not None and "evalset" in t:
+            bad |= {e for e in t["evalset"].dropna().astype(str) if not e.startswith("birdset_")}
+    return sorted(bad)
+
+
+def under(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--report", type=Path, default=Path("results/report"))
     ap.add_argument("--sites", type=Path, default=Path("configs/reference/sites.csv"))
-    ap.add_argument("--out", type=Path)
-    ap.add_argument("--title", default="BirdSet Model Comparison")
+    ap.add_argument("--config", type=Path, default=Path("configs/report.yaml"))
+    ap.add_argument("--out", type=Path, default=Path("docs/index.html"))
+    ap.add_argument("--title")
+    ap.add_argument("--repo-url")
+    ap.add_argument("--allow-nonpublic", action="store_true",
+                    help="render tables with non-BirdSet eval sets (never into docs/)")
     args = ap.parse_args()
-    out = args.out or args.report / "index.html"
+    cfg = yaml.safe_load(args.config.read_text()) if args.config.exists() else {}
+    title = args.title or cfg.get("title") or "Bird-sound models on BirdSet: replication and baseline"
+    repo_url = args.repo_url if args.repo_url is not None else (cfg.get("repo_url") or "")
+    author = cfg.get("author", "Jordan Wolfgang Klein")
+    description = cfg.get("description", "")
+    out = args.out
 
     h = pd.read_csv(args.report / "headline.csv")
     p = pd.read_csv(args.report / "published.csv")
     sp = pd.read_csv(args.report / "species.csv")
     g = pd.read_csv(args.report / "groups.csv")
+    bad = nonpublic_rows(h, sp)
+    if bad:
+        docs = Path(__file__).resolve().parent.parent / "docs"
+        if under(out, docs) or not args.allow_nonpublic:
+            sys.exit(f"refusing to render: non-public eval sets in {args.report}: {', '.join(bad)}"
+                     + (" (never into docs/)" if under(out, docs) else " (pass --allow-nonpublic for a local page)"))
     sites_df = pd.read_csv(args.sites)
     effort_f = args.sites.with_name("site_effort.csv")
     effort = ({s: g.sort_values("hour")["minutes"].round(1).tolist() for s, g in pd.read_csv(effort_f).groupby("site")}
@@ -882,13 +1080,14 @@ def main() -> None:
     models = [m for m in MODELS if m in set(h.model)] + sorted(set(h.model) - set(MODELS))
     sites = list(sites_df.site) + sorted(present - set(sites_df.site))
     today = dt.date.today().isoformat()
+    version = git_version()
 
     data = {
         "models": [{"id": m, "name": model_name(m), "cls": model_cls(m)} for m in models],
         "sites": records(sites_df),
-        "headline": records(h),
+        "headline": records(h.drop(columns=["evalset"], errors="ignore")),
         "groups": records(g),
-        "species": records(sp.drop(columns=["biome"], errors="ignore")),
+        "species": records(sp.drop(columns=["biome", "evalset"], errors="ignore")),
         "effort": effort,
         "hourly": records(hourly) if hourly is not None else [],
         "hourly_missing": hourly_missing,
@@ -898,31 +1097,11 @@ def main() -> None:
                         for s, n in zip(sites_df.site, sites_df.name))
     scape_sites = sorted(set(h[h["mode"] == "scape"].site) - {"All"})
     clip_sites = sorted(set(h[h["mode"] == "clips"].site) - {"All"})
+    link = lambda path: repo_link(path, repo_url)  # noqa: E731
 
     xc_note = (f" Xeno-canto counts were queried on {xc_date}: they are today's counts, larger than what any model "
                "trained on, and xeno-canto's IOC names can split or lump differently from eBird's." if xc_date else "")
-    page = f"""<meta charset="utf-8">
-<title>{escape(args.title)}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
-<style>{CSS}</style>
-<main>
-<header>
-  <div class="eyebrow">birdeval · BirdSet {" · ".join(sites)}</div>
-  <h1>{escape(args.title)}</h1>
-  <p class="lede">{", ".join(escape(model_name(m)) for m in models)} on {len(sites)} BirdSet test sites.
-  Clips mode follows BirdSet's protocol: every species in the site's label set, 5-second test clips
-  ({len(clip_sites)} sites). Soundscape mode scores the full recordings ({len(scape_sites)} sites).</p>
-  <p class="meta">Generated {today} by scripts/render_report.py</p>
-</header>
-<section id="summary">
-  <h2>Summary</h2>
-  {takeaways(h, p, g, models, hourly)}
-</section>
-<section id="explore">
-  <h2>Explore the results</h2>
-  <div class="controls" role="group" aria-label="Report filters">
+    explorer = f"""<div class="controls" role="group" aria-label="Report filters">
     <div class="ctl"><span class="ctl-label" id="l-mode">Mode</span>
       <div class="seg" data-key="mode" aria-labelledby="l-mode">
         <button data-v="clips">Clips</button><button data-v="scape">Soundscapes</button></div></div>
@@ -932,32 +1111,27 @@ def main() -> None:
       <div class="seg" data-key="view" aria-labelledby="l-view">
         <button data-v="overview">Overview</button><button data-v="groups">Groups</button><button data-v="species">Species</button><button data-v="hours">Hours</button></div></div>
   </div>
-  <div id="view" aria-live="polite"></div>
-</section>
-{published_section(p)}
-<section id="notes">
-  <h2>Notes</h2>
-  <ul class="notes">
+  <div id="view" aria-live="polite"></div>"""
+    notes = f"""<ul class="notes">
     <li>BirdNET may have been trained on recordings from these test sets, so its scores may be optimistic.
     BirdSet excluded it for this reason.</li>
     <li>Species names follow the 2025 eBird taxonomy. Older model names are mapped through
-    configs/taxonomy/synonyms.yaml. Every species at every site is scored for every model, including the 4 species
+    {link("configs/taxonomy/synonyms.yaml")}. Every species at every site is scored for every model, including the 4 species
     BirdNET 2.4 cannot predict, which count against it.</li>
     <li>Per-species AP is noisy for species with only a few labelled segments; group means pool many species but
     their intervals still widen as groups get small.</li>
-    <li>Site biomes are WWF biomes assigned per site (configs/reference/sites.csv); the sites are small areas, so
+    <li>Site biomes are WWF biomes assigned per site ({link("configs/reference/sites.csv")}); the sites are small areas, so
     a label describes the site's setting, not every recorder.</li>
     <li>POW is BirdSet's validation set, not a test set. It is included here like the others.</li>
-    <li>Calling times and call frequency bands come from BirdSet's call-level annotations (scripts/site_calls.py).
+    <li>Calling times and call frequency bands come from BirdSet's call-level annotations ({link("scripts/site_calls.py")}).
     BirdSet's “local_time” is UTC for PER and SSW (their file names end in Z); those are converted to local time.
     Most sites record only around dawn (PER 05–06 h, POW and HSN about 05–09 h); SSW records all day and UHH 05–23 h,
     so only those two show full daily patterns. Activity is calls per recorded hour, and unrecorded hours are shown as
     unknown. NBP has no times or frequency boxes.</li>
     <li>Body mass, lifestyle and habitat are AVONET; diet, foraging stratum and the nocturnal flag are EltonTraits 1.0,
     matched to eBird names through AVONET's crosswalk.{xc_note}</li>
-  </ul>
-  <details><summary>Metric definitions</summary>
-  <dl>
+  </ul>"""
+    definitions = """<dl>
     <dt>cmAP</dt><dd>Average precision per species, averaged over species. Treats rare and common species equally.</dd>
     <dt>AUROC</dt><dd>Chance a positive segment scores higher than a negative one, averaged over species.</dd>
     <dt>Top-1</dt><dd>Share of segments with at least one label where the top-scoring species is one of them.</dd>
@@ -965,16 +1139,62 @@ def main() -> None:
     <dt>Recall @90%P</dt><dd>At the single score threshold where 90% of a model's claims are correct, the share of
     true presences it finds. Per clip in clips mode, per recording unit in soundscape mode.</dd>
     <dt>Positives</dt><dd>Labelled 5-second segments with the species at that site.</dd>
-  </dl>
-  </details>
-</section>
-<footer>Traits: AVONET, Tobias et al. 2022, Ecology Letters 25:581 (CC BY 4.0); EltonTraits 1.0, Wilman et al. 2014,
-Ecology 95:2027 (CC0). Common names and links: eBird/Clements taxonomy 2025; xeno-canto.org; Macaulay Library.
-Published figures: van Merriënboer et al. 2025 (Perch 2.0); Rauch et al. 2024 (BirdSet, arXiv:2403.10380).</footer>
+  </dl>"""
+    body = {
+        "intro": f"""<p>{", ".join(escape(model_name(m)) for m in models)} on {len(sites)} BirdSet test sites.
+  Clips mode follows BirdSet's protocol: every species in the site's label set, 5-second test clips
+  ({len(clip_sites)} sites). Soundscape mode scores the full recordings ({len(scape_sites)} sites).</p>""",
+        "methods-dataset": notes,
+        "methods-criteria": definitions,
+        "results-replication": published_section(p),
+        "results-baseline": takeaways(h, p, g, models, hourly),
+        "explorer": explorer,
+    }
+    sections = "".join(section(sid, body) for sid, *_ in SECTIONS)
+    version_txt = f" · results version {escape(version)}" if version else ""
+    repo_txt = f' · <a href="{escape(repo_url)}">Source code</a>' if repo_url else ""
+    page = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{escape(title)}</title>
+<meta name="description" content="{escape(description)}">
+<meta name="author" content="{escape(author)}">
+<meta property="og:title" content="{escape(title)}">
+<meta property="og:description" content="{escape(description)}">
+<meta property="og:type" content="article">
+<meta property="og:image" content="assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{escape(title)}">
+<meta name="twitter:description" content="{escape(description)}">
+<meta name="twitter:image" content="assets/og.png">
+<style>{font_css()}
+{CSS}</style>
+</head>
+<body>
+<div class="page">
+<header>
+  <div class="eyebrow">birdeval · BirdSet {" · ".join(sites)}</div>
+  <h1>{escape(title)}</h1>
+  <p class="byline">{escape(author)}</p>
+  <p class="meta">Generated {today}{version_txt}{repo_txt}</p>
+</header>
+{toc()}
+<main>
+<article class="report">
+{sections}
+</article>
 </main>
-<script type="application/json" id="report-data">{blob}</script>
-<script>{JS}</script>
+<footer><p>{escape(author)} · generated {today} by {link("scripts/render_report.py")}.</p></footer>
+</div>
+<script type="application/json" id="report-data">{{blob}}</script>
+<script>{{JS}}</script>
+<script>{{TOC_JS}}</script>
+</body>
+</html>
 """
+    page = page.replace("{blob}", blob).replace("{JS}", JS).replace("{TOC_JS}", TOC_JS)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(page)
     print(f"wrote {out} ({out.stat().st_size / 1024:.0f} KB)")

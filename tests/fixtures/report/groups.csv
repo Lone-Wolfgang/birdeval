@@ -1,0 +1,175 @@
+mode,scope,grouping,group,model,n_pairs,mean_ap,ap_lo,ap_hi,sites
+clips,All,prevalence,1–9 segments,birdnet_2.4,120,0.3213,0.2643,0.381,HSN NBP NES PER POW SNE SSW UHH
+clips,All,prevalence,1–9 segments,birdnet_3.0,120,0.3845,0.3195,0.4556,HSN NBP NES PER POW SNE SSW UHH
+clips,All,prevalence,1–9 segments,perch_v2,120,0.2907,0.2343,0.3486,HSN NBP NES PER POW SNE SSW UHH
+clips,All,prevalence,10–49 segments,birdnet_2.4,137,0.4224,0.375,0.469,HSN NBP NES PER POW SNE SSW UHH
+clips,All,prevalence,10–49 segments,birdnet_3.0,137,0.445,0.3906,0.4958,HSN NBP NES PER POW SNE SSW UHH
+clips,All,prevalence,10–49 segments,perch_v2,137,0.363,0.313,0.4111,HSN NBP NES PER POW SNE SSW UHH
+clips,All,prevalence,50+ segments,birdnet_2.4,248,0.5472,0.5144,0.5787,HSN NES PER POW SNE SSW UHH
+clips,All,prevalence,50+ segments,birdnet_3.0,248,0.5766,0.5424,0.6096,HSN NES PER POW SNE SSW UHH
+clips,All,prevalence,50+ segments,perch_v2,248,0.4777,0.4429,0.5105,HSN NES PER POW SNE SSW UHH
+clips,All,habitat,Forest,birdnet_2.4,323,0.4532,0.4207,0.4845,HSN NBP NES PER POW SNE SSW UHH
+clips,All,habitat,Forest,birdnet_3.0,323,0.4753,0.4404,0.5098,HSN NBP NES PER POW SNE SSW UHH
+clips,All,habitat,Forest,perch_v2,323,0.3688,0.3377,0.4005,HSN NBP NES PER POW SNE SSW UHH
+clips,All,habitat,Shrubland,birdnet_2.4,65,0.4707,0.3899,0.5514,HSN NBP NES PER POW SNE SSW UHH
+clips,All,habitat,Shrubland,birdnet_3.0,65,0.4377,0.3542,0.5191,HSN NBP NES PER POW SNE SSW UHH
+clips,All,habitat,Shrubland,perch_v2,65,0.408,0.3274,0.488,HSN NBP NES PER POW SNE SSW UHH
+clips,All,habitat,Woodland,birdnet_2.4,50,0.494,0.4255,0.5612,NBP NES PER POW SNE SSW UHH
+clips,All,habitat,Woodland,birdnet_3.0,50,0.6057,0.5263,0.6804,NBP NES PER POW SNE SSW UHH
+clips,All,habitat,Woodland,perch_v2,50,0.5181,0.4388,0.5974,NBP NES PER POW SNE SSW UHH
+clips,All,habitat,Human Modified,birdnet_2.4,21,0.4186,0.3049,0.5233,HSN NBP NES PER POW SNE SSW
+clips,All,habitat,Human Modified,birdnet_3.0,21,0.4901,0.3598,0.624,HSN NBP NES PER POW SNE SSW
+clips,All,habitat,Human Modified,perch_v2,21,0.4089,0.2796,0.5435,HSN NBP NES PER POW SNE SSW
+clips,All,habitat,Wetland,birdnet_2.4,18,0.3695,0.262,0.4774,HSN PER POW SNE SSW
+clips,All,habitat,Wetland,birdnet_3.0,18,0.5947,0.4484,0.7225,HSN PER POW SNE SSW
+clips,All,habitat,Wetland,perch_v2,18,0.4152,0.2891,0.5378,HSN PER POW SNE SSW
+clips,All,habitat,Grassland,birdnet_2.4,17,0.5391,0.3735,0.7055,HSN NBP NES POW SNE SSW UHH
+clips,All,habitat,Grassland,birdnet_3.0,17,0.626,0.462,0.7833,HSN NBP NES POW SNE SSW UHH
+clips,All,habitat,Grassland,perch_v2,17,0.5831,0.416,0.7368,HSN NBP NES POW SNE SSW UHH
+clips,All,habitat,Riverine,birdnet_2.4,5,0.404,0.1387,0.6748,NBP NES PER SSW
+clips,All,habitat,Riverine,birdnet_3.0,5,0.3865,0.0844,0.6957,NBP NES PER SSW
+clips,All,habitat,Riverine,perch_v2,5,0.3322,0.0912,0.5733,NBP NES PER SSW
+clips,All,habitat,Other,birdnet_2.4,5,0.7628,0.6481,0.8841,HSN NBP SSW UHH
+clips,All,habitat,Other,birdnet_3.0,5,0.7475,0.6002,0.8862,HSN NBP SSW UHH
+clips,All,habitat,Other,perch_v2,5,0.7121,0.6251,0.8089,HSN NBP SSW UHH
+clips,All,habitat,Unknown,birdnet_2.4,1,0.002,0.002,0.002,NES
+clips,All,habitat,Unknown,birdnet_3.0,1,0.5185,0.5185,0.5185,NES
+clips,All,habitat,Unknown,perch_v2,1,0.3403,0.3403,0.3403,NES
+clips,All,biome,Tropical moist broadleaf forest,birdnet_2.4,248,0.4434,0.4043,0.4783,NES PER UHH
+clips,All,biome,Tropical moist broadleaf forest,birdnet_3.0,248,0.378,0.3417,0.4171,NES PER UHH
+clips,All,biome,Tropical moist broadleaf forest,perch_v2,248,0.3075,0.2735,0.3432,NES PER UHH
+clips,All,biome,Temperate broadleaf & mixed forest,birdnet_2.4,129,0.4682,0.4185,0.5202,POW SSW
+clips,All,biome,Temperate broadleaf & mixed forest,birdnet_3.0,129,0.6448,0.6015,0.6897,POW SSW
+clips,All,biome,Temperate broadleaf & mixed forest,perch_v2,129,0.4914,0.4447,0.5384,POW SSW
+clips,All,biome,Temperate conifer forest,birdnet_2.4,77,0.4652,0.3945,0.5339,HSN SNE
+clips,All,biome,Temperate conifer forest,birdnet_3.0,77,0.4613,0.3795,0.5421,HSN SNE
+clips,All,biome,Temperate conifer forest,perch_v2,77,0.3915,0.3155,0.4706,HSN SNE
+clips,All,biome,"Mediterranean forest, woodland & scrub",birdnet_2.4,51,0.5088,0.4496,0.5655,NBP
+clips,All,biome,"Mediterranean forest, woodland & scrub",birdnet_3.0,51,0.7383,0.6906,0.7832,NBP
+clips,All,biome,"Mediterranean forest, woodland & scrub",perch_v2,51,0.6526,0.6009,0.6993,NBP
+clips,All,xc,Under 100 recordings,birdnet_2.4,63,0.4435,0.3704,0.5205,HSN NES PER SNE UHH
+clips,All,xc,Under 100 recordings,birdnet_3.0,63,0.3482,0.2767,0.4203,HSN NES PER SNE UHH
+clips,All,xc,Under 100 recordings,perch_v2,63,0.2953,0.2264,0.3662,HSN NES PER SNE UHH
+clips,All,xc,100–499,birdnet_2.4,245,0.448,0.4068,0.4857,HSN NBP NES PER POW SNE UHH
+clips,All,xc,100–499,birdnet_3.0,245,0.4434,0.4008,0.4855,HSN NBP NES PER POW SNE UHH
+clips,All,xc,100–499,perch_v2,245,0.3532,0.3146,0.3912,HSN NBP NES PER POW SNE UHH
+clips,All,xc,"500–1,999",birdnet_2.4,82,0.5452,0.4905,0.5985,HSN NBP NES PER POW SNE UHH
+clips,All,xc,"500–1,999",birdnet_3.0,82,0.5846,0.5214,0.6478,HSN NBP NES PER POW SNE UHH
+clips,All,xc,"500–1,999",perch_v2,82,0.5124,0.4435,0.5743,HSN NBP NES PER POW SNE UHH
+clips,All,xc,"2,000 and over",birdnet_2.4,34,0.4966,0.416,0.5889,NBP NES POW SNE UHH
+clips,All,xc,"2,000 and over",birdnet_3.0,34,0.6584,0.5671,0.7386,NBP NES POW SNE UHH
+clips,All,xc,"2,000 and over",perch_v2,34,0.5669,0.487,0.6377,NBP NES POW SNE UHH
+clips,All,xc,No data,birdnet_2.4,81,0.4052,0.3523,0.4593,SSW
+clips,All,xc,No data,birdnet_3.0,81,0.6073,0.5495,0.6609,SSW
+clips,All,xc,No data,perch_v2,81,0.4525,0.3972,0.5039,SSW
+clips,HSN,prevalence,1–9 segments,birdnet_2.4,7,0.2826,0.0725,0.5277,HSN
+clips,HSN,prevalence,1–9 segments,birdnet_3.0,7,0.4125,0.127,0.7642,HSN
+clips,HSN,prevalence,1–9 segments,perch_v2,7,0.3758,0.1099,0.696,HSN
+clips,HSN,prevalence,10–49 segments,birdnet_2.4,5,0.4631,0.2172,0.7125,HSN
+clips,HSN,prevalence,10–49 segments,birdnet_3.0,5,0.4701,0.2153,0.7249,HSN
+clips,HSN,prevalence,10–49 segments,perch_v2,5,0.4739,0.2302,0.7284,HSN
+clips,HSN,prevalence,50+ segments,birdnet_2.4,9,0.7357,0.637,0.8174,HSN
+clips,HSN,prevalence,50+ segments,birdnet_3.0,9,0.7287,0.6593,0.7973,HSN
+clips,HSN,prevalence,50+ segments,perch_v2,9,0.6785,0.6061,0.7526,HSN
+clips,HSN,habitat,Forest,birdnet_2.4,10,0.5056,0.3198,0.6842,HSN
+clips,HSN,habitat,Forest,birdnet_3.0,10,0.5182,0.3273,0.6918,HSN
+clips,HSN,habitat,Forest,perch_v2,10,0.472,0.3087,0.6302,HSN
+clips,HSN,habitat,Other,birdnet_2.4,11,0.5326,0.3167,0.7151,HSN
+clips,HSN,habitat,Other,birdnet_3.0,11,0.6013,0.3589,0.8073,HSN
+clips,HSN,habitat,Other,perch_v2,11,0.5806,0.3471,0.7788,HSN
+clips,HSN,xc,Under 100 recordings,birdnet_2.4,2,0.732,0.6943,0.7696,HSN
+clips,HSN,xc,Under 100 recordings,birdnet_3.0,2,0.7588,0.7443,0.7733,HSN
+clips,HSN,xc,Under 100 recordings,perch_v2,2,0.7995,0.7566,0.8424,HSN
+clips,HSN,xc,100–499,birdnet_2.4,10,0.4151,0.219,0.6195,HSN
+clips,HSN,xc,100–499,birdnet_3.0,10,0.4293,0.2193,0.6327,HSN
+clips,HSN,xc,100–499,perch_v2,10,0.3746,0.1802,0.5753,HSN
+clips,HSN,xc,"500–1,999",birdnet_2.4,9,0.5888,0.3814,0.7792,HSN
+clips,HSN,xc,"500–1,999",birdnet_3.0,9,0.6651,0.4257,0.8626,HSN
+clips,HSN,xc,"500–1,999",perch_v2,9,0.64,0.4281,0.82,HSN
+scape,All,prevalence,1–9 segments,birdnet_2.4,120,0.3856,0.3212,0.4516,HSN NBP NES PER POW SNE SSW UHH
+scape,All,prevalence,1–9 segments,birdnet_3.0,120,0.4124,0.3459,0.4847,HSN NBP NES PER POW SNE SSW UHH
+scape,All,prevalence,1–9 segments,perch_v2,120,0.3044,0.2442,0.3639,HSN NBP NES PER POW SNE SSW UHH
+scape,All,prevalence,10–49 segments,birdnet_2.4,137,0.4576,0.4102,0.5037,HSN NBP NES PER POW SNE SSW UHH
+scape,All,prevalence,10–49 segments,birdnet_3.0,137,0.4726,0.4179,0.5231,HSN NBP NES PER POW SNE SSW UHH
+scape,All,prevalence,10–49 segments,perch_v2,137,0.3805,0.3289,0.4288,HSN NBP NES PER POW SNE SSW UHH
+scape,All,prevalence,50+ segments,birdnet_2.4,248,0.5664,0.534,0.5968,HSN NES PER POW SNE SSW UHH
+scape,All,prevalence,50+ segments,birdnet_3.0,248,0.5818,0.5494,0.613,HSN NES PER POW SNE SSW UHH
+scape,All,prevalence,50+ segments,perch_v2,248,0.4903,0.4554,0.5232,HSN NES PER POW SNE SSW UHH
+scape,All,habitat,Forest,birdnet_2.4,323,0.4911,0.4581,0.5232,HSN NBP NES PER POW SNE SSW UHH
+scape,All,habitat,Forest,birdnet_3.0,323,0.4977,0.4632,0.5315,HSN NBP NES PER POW SNE SSW UHH
+scape,All,habitat,Forest,perch_v2,323,0.3803,0.3469,0.413,HSN NBP NES PER POW SNE SSW UHH
+scape,All,habitat,Shrubland,birdnet_2.4,65,0.4882,0.408,0.5704,HSN NBP NES PER POW SNE SSW UHH
+scape,All,habitat,Shrubland,birdnet_3.0,65,0.4435,0.3611,0.5271,HSN NBP NES PER POW SNE SSW UHH
+scape,All,habitat,Shrubland,perch_v2,65,0.4155,0.3334,0.4966,HSN NBP NES PER POW SNE SSW UHH
+scape,All,habitat,Woodland,birdnet_2.4,50,0.537,0.4698,0.6049,NBP NES PER POW SNE SSW UHH
+scape,All,habitat,Woodland,birdnet_3.0,50,0.6128,0.5323,0.6875,NBP NES PER POW SNE SSW UHH
+scape,All,habitat,Woodland,perch_v2,50,0.5386,0.4554,0.619,NBP NES PER POW SNE SSW UHH
+scape,All,habitat,Human Modified,birdnet_2.4,21,0.4375,0.3395,0.5376,HSN NBP NES PER POW SNE SSW
+scape,All,habitat,Human Modified,birdnet_3.0,21,0.5045,0.3802,0.6303,HSN NBP NES PER POW SNE SSW
+scape,All,habitat,Human Modified,perch_v2,21,0.4154,0.2852,0.55,HSN NBP NES PER POW SNE SSW
+scape,All,habitat,Wetland,birdnet_2.4,18,0.3971,0.2944,0.5002,HSN PER POW SNE SSW
+scape,All,habitat,Wetland,birdnet_3.0,18,0.5605,0.4152,0.6882,HSN PER POW SNE SSW
+scape,All,habitat,Wetland,perch_v2,18,0.4816,0.3469,0.6115,HSN PER POW SNE SSW
+scape,All,habitat,Grassland,birdnet_2.4,17,0.5881,0.4216,0.742,HSN NBP NES POW SNE SSW UHH
+scape,All,habitat,Grassland,birdnet_3.0,17,0.6609,0.5014,0.8088,HSN NBP NES POW SNE SSW UHH
+scape,All,habitat,Grassland,perch_v2,17,0.5978,0.4299,0.748,HSN NBP NES POW SNE SSW UHH
+scape,All,habitat,Riverine,birdnet_2.4,5,0.3661,0.1139,0.6714,NBP NES PER SSW
+scape,All,habitat,Riverine,birdnet_3.0,5,0.4061,0.085,0.7408,NBP NES PER SSW
+scape,All,habitat,Riverine,perch_v2,5,0.3645,0.1091,0.6199,NBP NES PER SSW
+scape,All,habitat,Other,birdnet_2.4,5,0.8059,0.7448,0.867,HSN NBP SSW UHH
+scape,All,habitat,Other,birdnet_3.0,5,0.7603,0.629,0.8919,HSN NBP SSW UHH
+scape,All,habitat,Other,perch_v2,5,0.7545,0.6768,0.8423,HSN NBP SSW UHH
+scape,All,habitat,Unknown,birdnet_2.4,1,0.002,0.002,0.002,NES
+scape,All,habitat,Unknown,birdnet_3.0,1,0.5514,0.5514,0.5514,NES
+scape,All,habitat,Unknown,perch_v2,1,0.3288,0.3288,0.3288,NES
+scape,All,biome,Tropical moist broadleaf forest,birdnet_2.4,248,0.4799,0.4395,0.5156,NES PER UHH
+scape,All,biome,Tropical moist broadleaf forest,birdnet_3.0,248,0.3954,0.3605,0.4335,NES PER UHH
+scape,All,biome,Tropical moist broadleaf forest,perch_v2,248,0.3123,0.278,0.3483,NES PER UHH
+scape,All,biome,Temperate broadleaf & mixed forest,birdnet_2.4,129,0.4872,0.4372,0.5382,POW SSW
+scape,All,biome,Temperate broadleaf & mixed forest,birdnet_3.0,129,0.6553,0.6134,0.6968,POW SSW
+scape,All,biome,Temperate broadleaf & mixed forest,perch_v2,129,0.5053,0.4558,0.5543,POW SSW
+scape,All,biome,Temperate conifer forest,birdnet_2.4,77,0.5292,0.4596,0.5982,HSN SNE
+scape,All,biome,Temperate conifer forest,birdnet_3.0,77,0.4811,0.3985,0.5605,HSN SNE
+scape,All,biome,Temperate conifer forest,perch_v2,77,0.4213,0.3422,0.5022,HSN SNE
+scape,All,biome,"Mediterranean forest, woodland & scrub",birdnet_2.4,51,0.5255,0.4644,0.5834,NBP
+scape,All,biome,"Mediterranean forest, woodland & scrub",birdnet_3.0,51,0.7623,0.7152,0.8057,NBP
+scape,All,biome,"Mediterranean forest, woodland & scrub",perch_v2,51,0.6897,0.6401,0.735,NBP
+scape,All,xc,Under 100 recordings,birdnet_2.4,63,0.4762,0.3992,0.554,HSN NES PER SNE UHH
+scape,All,xc,Under 100 recordings,birdnet_3.0,63,0.3655,0.2952,0.4393,HSN NES PER SNE UHH
+scape,All,xc,Under 100 recordings,perch_v2,63,0.2938,0.2241,0.3672,HSN NES PER SNE UHH
+scape,All,xc,100–499,birdnet_2.4,245,0.4891,0.4478,0.5266,HSN NBP NES PER POW SNE UHH
+scape,All,xc,100–499,birdnet_3.0,245,0.4578,0.4166,0.5001,HSN NBP NES PER POW SNE UHH
+scape,All,xc,100–499,perch_v2,245,0.3595,0.3191,0.3974,HSN NBP NES PER POW SNE UHH
+scape,All,xc,"500–1,999",birdnet_2.4,82,0.5905,0.5349,0.6436,HSN NBP NES PER POW SNE UHH
+scape,All,xc,"500–1,999",birdnet_3.0,82,0.6017,0.5394,0.6645,HSN NBP NES PER POW SNE UHH
+scape,All,xc,"500–1,999",perch_v2,82,0.5313,0.4628,0.5952,HSN NBP NES PER POW SNE UHH
+scape,All,xc,"2,000 and over",birdnet_2.4,34,0.5064,0.4229,0.6009,NBP NES POW SNE UHH
+scape,All,xc,"2,000 and over",birdnet_3.0,34,0.6876,0.598,0.7698,NBP NES POW SNE UHH
+scape,All,xc,"2,000 and over",perch_v2,34,0.6149,0.5286,0.6894,NBP NES POW SNE UHH
+scape,All,xc,No data,birdnet_2.4,81,0.4192,0.3653,0.4726,SSW
+scape,All,xc,No data,birdnet_3.0,81,0.6248,0.5739,0.6739,SSW
+scape,All,xc,No data,perch_v2,81,0.4838,0.427,0.541,SSW
+scape,HSN,prevalence,1–9 segments,birdnet_2.4,7,0.344,0.1091,0.6061,HSN
+scape,HSN,prevalence,1–9 segments,birdnet_3.0,7,0.3853,0.1146,0.6953,HSN
+scape,HSN,prevalence,1–9 segments,perch_v2,7,0.3866,0.1188,0.7291,HSN
+scape,HSN,prevalence,10–49 segments,birdnet_2.4,5,0.4844,0.2205,0.7642,HSN
+scape,HSN,prevalence,10–49 segments,birdnet_3.0,5,0.4978,0.2786,0.712,HSN
+scape,HSN,prevalence,10–49 segments,perch_v2,5,0.4885,0.2284,0.7543,HSN
+scape,HSN,prevalence,50+ segments,birdnet_2.4,9,0.7536,0.6789,0.816,HSN
+scape,HSN,prevalence,50+ segments,birdnet_3.0,9,0.7286,0.6517,0.7997,HSN
+scape,HSN,prevalence,50+ segments,perch_v2,9,0.7036,0.6434,0.7647,HSN
+scape,HSN,habitat,Forest,birdnet_2.4,10,0.5288,0.3389,0.7014,HSN
+scape,HSN,habitat,Forest,birdnet_3.0,10,0.5236,0.3446,0.6874,HSN
+scape,HSN,habitat,Forest,perch_v2,10,0.4948,0.3215,0.6613,HSN
+scape,HSN,habitat,Other,birdnet_2.4,11,0.5749,0.3636,0.7457,HSN
+scape,HSN,habitat,Other,birdnet_3.0,11,0.5916,0.3623,0.7893,HSN
+scape,HSN,habitat,Other,perch_v2,11,0.5939,0.3608,0.7891,HSN
+scape,HSN,xc,Under 100 recordings,birdnet_2.4,2,0.7766,0.7236,0.8296,HSN
+scape,HSN,xc,Under 100 recordings,birdnet_3.0,2,0.7946,0.7533,0.8358,HSN
+scape,HSN,xc,Under 100 recordings,perch_v2,2,0.8285,0.7737,0.8834,HSN
+scape,HSN,xc,100–499,birdnet_2.4,10,0.4524,0.2536,0.6517,HSN
+scape,HSN,xc,100–499,birdnet_3.0,10,0.429,0.2239,0.6285,HSN
+scape,HSN,xc,100–499,perch_v2,10,0.3907,0.192,0.5953,HSN
+scape,HSN,xc,"500–1,999",birdnet_2.4,9,0.615,0.398,0.7957,HSN
+scape,HSN,xc,"500–1,999",birdnet_3.0,9,0.6517,0.4364,0.8329,HSN
+scape,HSN,xc,"500–1,999",perch_v2,9,0.6574,0.4408,0.8319,HSN
