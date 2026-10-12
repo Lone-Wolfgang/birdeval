@@ -2,5 +2,5 @@
 title: "Bird-sound models on BirdSet: replication and baseline"
 author: Jordan Wolfgang Klein
 description: "BirdNET 2.4, BirdNET 3.0 and Perch V2 on the eight BirdSet test sites: replicating published results and setting a baseline by site, biome and species."
-repo_url: ""          # e.g. https://github.com/<user>/birdeval; empty = file mentions render as code text
+repo_url: "https://github.com/Lone-Wolfgang/birdeval"          # e.g. https://github.com/<user>/birdeval; empty = file mentions render as code text
 figure_audio: true    # play the spectrogram figure's clip under the figure
