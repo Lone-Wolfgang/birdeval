@@ -1,59 +1,122 @@
 <section id="methods-sound">
 <h3>2.1 From sound to prediction</h3>
-<p>Each model hears a fixed window of audio and returns a score for every species it knows.</p>
+<p>A model never hears a whole recording at once. It listens to a fixed window of audio, a few seconds long, turns it
+into a spectrogram (a picture of sound energy across time and frequency) and returns a score for every species it
+knows. Sliding the window along the recording gives a score for each species in each window.</p>
+<p>The evaluation then turns those window scores into claims about two things: which species are present in each
+labelled 5-second segment, and which species are present in each recording. The figure shows one excerpt. BirdNET and
+Perch slice the same audio differently: BirdNET into 3-second windows, Perch into 5-second windows.</p>
 {{block:fig_spectrogram}}
 </section>
 
 <section id="methods-dataset">
 <h3>2.2 Dataset: BirdSet</h3>
+<p>BirdSet (Rauch et al. 2025, ICLR 2025, arXiv:2403.10380) is a benchmark for bird-sound classification. Its
+training set, XCL, holds 528,434 xeno-canto recordings of 9,734 classes; its test data are eight soundscape datasets
+annotated by experts, more than 400 hours in all (published figures). Here every test site is scored:
+{{n_recordings_total}} recordings, {{hours_total|int}} hours.</p>
 {{block:site_table}}
 <ul class="notes">
-  <li>Site biomes are WWF biomes assigned per site ({{file:configs/reference/sites.csv}}); the sites are small areas,
-  so a label describes the site's setting, not every recorder.</li>
-  <li>POW is BirdSet's validation set, not a test set. It is included here like the others.</li>
-  <li>Calling times and call frequency bands come from BirdSet's call-level annotations
-  ({{file:scripts/site_calls.py}}). BirdSet's “local_time” is UTC for PER and SSW (their file names end in Z); those are
-  converted to local time. Most sites record only around dawn (PER 05–06 h, POW and HSN about 05–09 h); SSW records all
-  day and UHH 05–23 h, so only those two show full daily patterns. Activity is calls per recorded hour, and unrecorded
-  hours are shown as unknown. NBP has no times or frequency boxes.</li>
-  <li>Body mass, lifestyle and habitat are AVONET; diet, foraging stratum and the nocturnal flag are EltonTraits 1.0,
-  matched to eBird names through AVONET's crosswalk. Xeno-canto counts were queried on {{xc_query_date}}: they are
-  today's counts, larger than what any model trained on, and xeno-canto's IOC names can split or lump differently from
-  eBird's.</li>
+  <li><strong>POW is BirdSet's validation set</strong>, not a test set. It is included here like the others.</li>
+  <li><strong>NBP is not a soundscape set.</strong> Its “recordings” are clips of a few seconds each, so its
+  recording-level results mean little.</li>
+  <li><strong>Most sites record only around dawn.</strong> SSW records around the clock and UHH from early morning
+  to late evening, so only those two show full daily patterns. BirdSet gives PER's and SSW's times in UTC (their file
+  names end in Z); they are converted to local time ({{file:scripts/site_calls.py}}). NBP has no clock times or
+  frequency boxes.</li>
+  <li><strong>Site biomes</strong> are WWF biomes assigned per site ({{file:configs/reference/sites.csv}}). The sites
+  are small areas, so a label describes the site's setting, not every recorder.</li>
 </ul>
+<p><strong>Label check.</strong> Before relying on BirdSet's 5-second labels, they were rebuilt from its call-level
+annotations (a call counts for a segment when it overlaps it by at least 0.5 s) and compared with the official
+labels, from metadata alone ({{file:scripts/birdset_labels.py}}). They agree exactly on {{label_agree_lo|pct}} to
+{{label_agree_hi|pct}} of segments at {{label_agree_n_sites}} sites ({{label_agree_pow|pct}} at POW), and on
+{{label_agree_nbp|pct}} at NBP.</p>
+<p><strong>Two modes.</strong> <em>Clips</em> mode follows BirdSet's protocol: each site's 5-second test clips, every
+species in the site's label set. It is the mode that can be compared with published figures. <em>Soundscape</em> mode
+runs the models over the full recordings, as a deployment would, and scores each 5-second segment and each recording.
+Both are reported because they answer different questions: does the harness reproduce the literature, and how would
+the models do on the recordings a monitoring project collects.</p>
+<p><strong>Species information.</strong> To ask which kinds of species are served poorly, each species is described
+from outside sources: body mass, lifestyle and habitat from AVONET; diet, foraging stratum and a nocturnal flag from
+EltonTraits 1.0, matched to eBird names through AVONET's crosswalk; the number of xeno-canto recordings, queried on
+{{xc_query_date}}; and, from BirdSet's call annotations, each species' call frequency band and calling times at each
+site. The xeno-canto counts are today's counts, larger than what any model trained on, and xeno-canto's IOC names
+can split or lump species differently from eBird's. These sources are how “underrepresented” is measured in 3.3.</p>
 </section>
 
 <section id="methods-models">
 <h3>2.3 Models: shared approach, different decisions</h3>
+<p>All three models take a mono waveform, compute a spectrogram inside the model, and return a score per class per
+window. Everything else differs, and several of the differences matter for this project:</p>
 {{block:model_table}}
-<ul class="notes">
-  <li>BirdNET may have been trained on recordings from these test sets, so its scores may be optimistic. BirdSet
-  excluded it for this reason.</li>
-</ul>
+<p>Perch V2 is loaded through the <code>birdnet</code> Python package (version {{birdnet_pkg}}), which downloads a
+converted copy of the model. The replication in 3.1 shows that it behaves like the published model.</p>
+<p><strong>Training-data overlap.</strong> BirdSet left BirdNET out of its comparisons “due to potential test data
+leakage” (Rauch et al. 2025, section 4.1): BirdNET may have been trained on recordings from these sites. Overlap has
+not been checked for any model here, so BirdNET's results in particular may be optimistic.</p>
 </section>
 
 <section id="methods-pipeline">
 <h3>2.4 Running the models side by side</h3>
-{{block:fig_pipeline}}
+<p>Comparing the models fairly took four decisions:</p>
 <ul class="notes">
-  <li>Species names follow the 2025 eBird taxonomy. Older model names are mapped through
-  {{file:configs/taxonomy/synonyms.yaml}}. Every species at every site is scored for every model, including the 4
-  species BirdNET 2.4 cannot predict, which count against it.</li>
+  <li><strong>One package for all three.</strong> BirdNET 2.4, BirdNET 3.0 and Perch V2 all run through the
+  <code>birdnet</code> package, with the same audio loading and the same window settings per model.</li>
+  <li><strong>One label space.</strong> Every model's labels are mapped to scientific names in the 2025 eBird taxonomy,
+  through eBird codes and {{file:configs/taxonomy/synonyms.yaml}} for names that changed. Every species at every site
+  is scored for every model, including the {{uncovered_b24}} species BirdNET 2.4 cannot predict (at
+  {{uncovered_b24_sites}}), which count against it.</li>
+  <li><strong>Raw logits, cached before any scoring decision.</strong> Each model's raw output is stored per file, so
+  every later choice (score scale, alignment, metric) is applied to the same predictions.</li>
+  <li><strong>One alignment rule</strong> for matching model windows to labelled segments, set out below.</li>
 </ul>
+{{block:fig_pipeline}}
+<aside class="decision">
+  <h4>Design decision: the alignment rule</h4>
+  <p>Model windows and BirdSet's 5-second segments lie on different grids, so each window has to be assigned to a
+  segment. Under the first rule tried, any window overlapping a segment by at least 1 second counted for it. Perch's
+  5-second windows then scored calls in the neighbouring segment: on POW its soundscape cmAP was 0.471 against 0.567
+  on clips (historical numbers, under the old rule, from {{file:decision_point.md}}).</p>
+  <p>The rule now used is the half-window rule: a window counts for the segment that holds more than half of it. It
+  follows from the window geometry alone and was not tuned on results. Perch on POW now scores {{perch_pow_clips_cmap}}
+  on clips and {{perch_pow_scape_cmap}} in the soundscapes.</p>
+</aside>
+<p><strong>Three class scopes.</strong> Each result can be computed over all of a site's species (<em>all</em>), over
+the species a given model can predict (<em>covered</em>), or over the species every model can predict
+(<em>shared</em>). This page uses <em>all</em>, BirdSet's protocol, unless stated.</p>
+<p><strong>Three-state labels.</strong> A species is present, absent, or not reviewed in each segment. Audio that
+nobody reviewed is left out of every metric rather than counted as absent.</p>
 </section>
 
 <section id="methods-criteria">
 <h3>2.5 Evaluation criteria</h3>
-<dl>
-  <dt>cmAP</dt><dd>Average precision per species, averaged over species. Treats rare and common species equally.</dd>
-  <dt>AUROC</dt><dd>Chance a positive segment scores higher than a negative one, averaged over species.</dd>
-  <dt>Top-1</dt><dd>Share of segments with at least one label where the top-scoring species is one of them.</dd>
-  <dt>Recording cmAP</dt><dd>cmAP for species presence per recording unit, from soundscape mode.</dd>
-  <dt>Recall @90%P</dt><dd>At the single score threshold where 90% of a model's claims are correct, the share of true
-  presences it finds. Per clip in clips mode, per recording unit in soundscape mode.</dd>
-  <dt>Positives</dt><dd>Labelled 5-second segments with the species at that site.</dd>
+<p>Each metric answers a different question, and each matters here for a different reason.</p>
+<dl class="criteria">
+  <dt>cmAP (primary)</dt>
+  <dd>Average precision per species, averaged over species. Because each species counts once, rare and
+  underrepresented species weigh as much as common ones, which is the point of this project.</dd>
+  <dt>AUROC</dt>
+  <dd>The chance that a segment with the species scores higher than one without it, averaged over species. It does not
+  depend on how common a species is, so it compares fairly across sites and hours.</dd>
+  <dt>Top-1</dt>
+  <dd>The share of segments with at least one label where the top-scoring species is one of them. Reported for
+  comparability with BirdSet.</dd>
+  <dt>Recording-level presence</dt>
+  <dd>The deployment question: is species X in this recording? Recording cmAP is cmAP over recordings instead of
+  segments. Recall at 80, 90 and 95% precision is the share of true presences found at the single score threshold
+  where that share of claims is right. List precision is the share of a recording's claimed species that are really
+  there. In clips mode each clip is its own recording.</dd>
+  <dt>Evidence precision</dt>
+  <dd>A detection is only useful if a person can check it. For each species claimed at the 90%-precision threshold,
+  the model cites its highest-scoring window as evidence; the evidence is right when that window overlaps an
+  annotated call of the species by at least 0.5 s. The conditional version counts only claims that are right at
+  recording level, separating “wrong species” from “right species, wrong clip”.</dd>
 </dl>
 {{block:fig_recall_example}}
-<p>Per-species AP is noisy for species with only a few labelled segments; group means pool many species but their
-intervals still widen as groups get small.</p>
+<p><strong>Uncertainty.</strong> Intervals are 95% bootstrap intervals that resample whole recordings, because
+segments within a recording are correlated: resampling segments would make the intervals too narrow.</p>
+<p><strong>Per-species reporting.</strong> A group mean can hide species that fail completely, so results are also
+given per species (3.3 and 3.4). Per-species AP is noisy for species with only a few labelled segments; group means
+pool many species, but their intervals still widen as groups get small.</p>
 </section>

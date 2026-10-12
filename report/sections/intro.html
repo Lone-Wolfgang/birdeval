@@ -1,3 +1,41 @@
-<p>{{model_names}} on {{n_sites}} BirdSet test sites. Clips mode follows BirdSet's protocol: every species in the
-site's label set, scored on its 5-second test clips ({{sites_clips}}). Soundscape mode scores the full recordings
-({{sites_scape}}).</p>
+<p><strong>Purpose.</strong> This page is groundwork for a project to improve bird-sound recognition for the species and
+biomes that current models serve poorly. It is not a leaderboard. Its job is to describe where three widely used
+models stand today, measured carefully enough that a later improvement can be told apart from noise.</p>
+
+<p>Improving on existing models starts with understanding them. The leading models share a broad approach: they turn
+audio into a spectrogram and score every species they know. They differ in many design decisions: how long a window
+they listen to, the sample rate, the training data, the label set and the scale of their output.</p>
+
+<p>Running and comparing them fairly is harder than it looks. Species names have to be mapped onto one taxonomy,
+scores put on a common footing, and each model's windows matched to labels that were drawn on a different grid.
+Methods (section 2) explains how each of these is handled.</p>
+
+<p>The page is organised around four aims:</p>
+<ol class="aims">
+  <li><strong>Replicate</strong> published results before proposing any improvement.</li>
+  <li><strong>Understand</strong> how the models work and where they differ mechanically.</li>
+  <li><strong>Define the evaluation criteria</strong>, and why each matters for passive soundscape monitoring, where a
+  wrong detection costs more than a missed one.</li>
+  <li><strong>Establish a baseline</strong> by site, biome and species, and find where performance is weakest.</li>
+</ol>
+
+<p><strong>What we found.</strong></p>
+<ul class="findings">
+  <li><strong>Replication.</strong> Perch V2 reproduces {{repl_n_within}} of {{repl_n_total}} published per-site values
+  within {{repl_tol|2f}} (<a href="#results-replication">3.1</a>).</li>
+  <li><strong>Weakest areas.</strong> Performance is weakest in tropical moist forest, where mean per-species AP is
+  {{biome_tropical_range}} across models against {{biome_others_range}} in the other biomes. It is also weaker for
+  species with few xeno-canto recordings and for species with few labelled examples (<a href="#results-weakest">3.3</a>).</li>
+  <li><strong>Mechanics change conclusions.</strong> Perch's raw scores sit at different levels for different species,
+  so a single deployment threshold serves it badly even though it ranks recordings well: its recording-level cmAP is
+  {{scape_rec_cmap_perch}}, close to BirdNET's {{scape_rec_cmap_b24}} and {{scape_rec_cmap_b30}}, but its recall at
+  90% precision is {{scape_rec_recall90_perch}} against {{scape_rec_recall90_b24}} and {{scape_rec_recall90_b30}}
+  (<a href="#results-baseline">3.2</a>).</li>
+</ul>
+
+<p><strong>How to read this page.</strong> Methods (section 2) covers the data, the models, the pipeline and the
+metrics. Results 3.4 holds the species tables: per-species metrics, traits, calling times, call frequencies and links
+to xeno-canto, eBird and the Macaulay Library for each species at each site.</p>
+
+<p class="caveat">BirdNET may have been trained on recordings from these test sites, so its results here may be
+optimistic (<a href="#methods-models">2.3</a>).</p>

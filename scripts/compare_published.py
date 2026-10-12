@@ -63,6 +63,8 @@ def load_summaries(run_dirs: list[Path]) -> pd.DataFrame:
                     # holds the species; cond: only claims right at the unit level
                     "rec_evidence90": t90.get("evidence_precision", float("nan")),
                     "rec_evidence90_cond": t90.get("conditional_evidence_precision", float("nan")),
+                    "n_uncovered": s.get("coverage", {}).get("total", 0) - s.get("coverage", {}).get("covered", 0),
+                    "birdnet_pkg": s.get("model_info", {}).get("birdnet_pkg"),
                 })
     return pd.DataFrame(rows)
 

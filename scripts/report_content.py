@@ -163,6 +163,30 @@ def build_facts(h: pd.DataFrame, p: pd.DataFrame, g: pd.DataFrame, sp: pd.DataFr
         if not a.empty:
             f[f"{mode}_n_sites_mean"] = len(str(a["sites"].iloc[0]).split())
 
+    # species a model can't predict (they score lowest and count against it)
+    c_all = per_site[per_site["mode"] == "clips"]
+    if "n_uncovered" in c_all:
+        for m, k in MODEL_KEYS.items():
+            sub = c_all[c_all.model == m]
+            if not sub.empty:
+                f[f"uncovered_{k}"] = int(sub["n_uncovered"].sum())
+                f[f"uncovered_{k}_sites"] = ", ".join(sorted(sub[sub["n_uncovered"] > 0].site)) or "none"
+    if "birdnet_pkg" in h:
+        f["birdnet_pkg"] = ", ".join(sorted(set(h["birdnet_pkg"].dropna().astype(str).str.split().sum())))
+
+    # BirdSet's own label check (scripts/birdset_labels.py): rebuilt vs official segment labels
+    if density is not None and "exact_agreement" in density:
+        d = density.set_index("site")["exact_agreement"]
+        rest = d.drop(index="NBP", errors="ignore")
+        f["label_agree_lo"], f["label_agree_hi"] = float(rest.min()), float(rest.max())
+        f["label_agree_n_sites"] = len(rest)
+        if "POW" in d:
+            f["label_agree_pow"] = float(d["POW"])
+        if "NBP" in d:
+            f["label_agree_nbp"] = float(d["NBP"])
+        f["n_recordings_total"] = int(density["recordings"].sum())
+        f["hours_total"] = float(density["hours"].sum())
+
     # hardest site: lowest mean clips cmAP over models
     c = per_site[per_site["mode"] == "clips"]
     if not c.empty:
@@ -175,6 +199,7 @@ def build_facts(h: pd.DataFrame, p: pd.DataFrame, g: pd.DataFrame, sp: pd.DataFr
         if density is not None and hard in set(density.site):
             f["hardest_site_species_per_rec"] = float(density.set_index("site").loc[hard, "species_per_recording"])
         f["easiest_site"] = by.index[-1]
+        f["hardest_site_lowest_n"] = int((c.loc[c.groupby("model")["cmAP"].idxmin(), "site"] == hard).sum())
 
     # Perch on POW, clips vs soundscape segment cmAP (the alignment-rule check)
     for mode in ("clips", "scape"):
@@ -190,6 +215,10 @@ def build_facts(h: pd.DataFrame, p: pd.DataFrame, g: pd.DataFrame, sp: pd.DataFr
             f[f"biome_{label}_range"] = (float(sub.mean_ap.min()), float(sub.mean_ap.max()))
             f[f"biome_{label}_pairs"] = int(sub.n_pairs.iloc[0])
             f[f"biome_{label}_sites"] = ", ".join(str(sub.sites.iloc[0]).split())
+    bio = cg[cg.grouping == "biome"]
+    if not bio.empty:
+        lowest = bio.loc[bio.groupby("model")["mean_ap"].idxmin(), "group"]
+        f["biome_tropical_lowest_n"] = int((lowest == "Tropical moist broadleaf forest").sum())
     others = cg[(cg.grouping == "biome") & (cg.group != "Tropical moist broadleaf forest")]
     if not others.empty:
         f["biome_others_range"] = (float(others.mean_ap.min()), float(others.mean_ap.max()))

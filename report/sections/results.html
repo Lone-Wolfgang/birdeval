@@ -1,29 +1,88 @@
 <section id="results-replication">
 <h3>3.1 Replication</h3>
-<p class="lede">Perch V2 in clips mode against the three Perch 2.0 variants in van Merriënboer et al. 2025
-(arXiv:2508.04665, Appendix C, Table 4). A value counts as within if it is no more than {{repl_tol|2f}} outside the
-published range. {{repl_n_within}} of {{repl_n_total}} values on {{repl_sites}} are within.</p>
+<p>Before measuring anything new, the harness has to reproduce what has been published. Perch V2 in clips mode is
+compared with the three Perch 2.0 variants in van Merriënboer et al. 2025 (arXiv:2508.04665, Appendix C, Table 4).
+A value counts as within when it is no more than {{repl_tol|2f}} outside the published range.
+{{repl_n_within}} of {{repl_n_total}} values on {{repl_n_sites}} sites are within; none falls more than
+{{repl_max_below}} below the published range.</p>
 {{block:replication_table}}
 <p class="meta">POW is not in the Perch 2.0 table: BirdSet uses it as a validation set. BirdNET has no published
-per-site figures; BirdSet left it out because its training data may overlap the test sets.</p>
+per-site figures, because BirdSet left it out for possible test-data leakage. Taxonomy mapping matters at this level
+of agreement: before the current {{file:configs/taxonomy/synonyms.yaml}}, Perch was 0.01–0.02 below the published
+cmAP and AUROC on HSN and SNE (historical numbers).</p>
 </section>
 
 <section id="results-baseline">
 <h3>3.2 Overall baseline</h3>
-<p>Averaged over {{clips_n_sites_mean}} sites, clips cmAP is {{clips_cmap_b24}} for BirdNET 2.4, {{clips_cmap_b30}}
-for BirdNET 3.0 and {{clips_cmap_perch}} for Perch V2.</p>
+<p>Segment cmAP per site in clips mode, with 95% intervals over recordings. This is the starting point any improvement
+will be measured against.</p>
+{{block:baseline_chart}}
+<ul class="findings">
+  <li><strong>Site difficulty.</strong> {{hardest_site}} ({{hardest_site_name}}) is the
+  hardest site for {{hardest_site_lowest_n}} of {{n_models}} models, at {{hardest_site_cmap_range}} cmAP: it has {{hardest_site_species}} species and
+  about {{hardest_site_species_per_rec|int}} species per recording, far more than any other site.</li>
+  <li><strong>Recording level depends on each model's score scale.</strong> Averaged over the
+  {{scape_n_sites_mean}} soundscape sites, recording-level cmAP is {{scape_rec_cmap_b24}} for BirdNET 2.4,
+  {{scape_rec_cmap_b30}} for BirdNET 3.0 and {{scape_rec_cmap_perch}} for Perch V2: the models rank recordings
+  similarly well. Recall at 90% precision, which needs one threshold to work for every species, is
+  {{scape_rec_recall90_b24}}, {{scape_rec_recall90_b30}} and {{scape_rec_recall90_perch}}. Perch's logits run high for
+  every species and at different levels per species, so a single threshold that keeps its precision at 90% must sit
+  high enough to miss many presences.</li>
+  <li><strong>Evidence precision.</strong> At that threshold, the window a model cites as evidence holds the claimed
+  species for {{scape_rec_evidence90_b24|pct}} (BirdNET 2.4), {{scape_rec_evidence90_b30|pct}} (BirdNET 3.0) and
+  {{scape_rec_evidence90_perch|pct}} (Perch V2) of claims, mean over sites. Among claims that are right at recording
+  level, it is {{scape_rec_evidence90_cond_b24|pct}}, {{scape_rec_evidence90_cond_b30|pct}} and
+  {{scape_rec_evidence90_cond_perch|pct}}: even when the species is right, some cited clips would not let a listener
+  confirm it.</li>
+</ul>
 </section>
 
 <section id="results-weakest">
 <h3>3.3 Where performance is weakest</h3>
-<p>Mean per-species AP on species with 1–9 labelled segments is {{prev_1_9_range}} across models, against
-{{prev_50plus_range}} for species with 50 or more.</p>
-<p>The {{weakest_rule_n}} (site, species) pairs with at least {{weakest_min_pos}} labelled segments where even the
-best model's AP is lowest:</p>
+<p>“Underrepresented” has two meanings here, and they are kept apart. <strong>Training representation</strong> (how
+many xeno-canto recordings a species has; which region and biome it lives in) is what the project aims to change.
+<strong>Test prevalence</strong> (how many labelled segments a species has at a site) mostly limits how precisely its
+performance can be measured.</p>
+<ul class="findings">
+  <li><strong>Biome.</strong> Tropical moist broadleaf forest ({{biome_tropical_sites}}; {{biome_tropical_pairs}}
+  site–species pairs) has mean per-species AP of {{biome_tropical_range}} across models, the lowest biome for
+  {{biome_tropical_lowest_n}} of {{n_models}} models. Temperate conifer forest ({{biome_temperate_conifer_sites}}) is
+  at {{biome_temperate_conifer_range}}, temperate broadleaf and mixed forest ({{biome_temperate_broadleaf_sites}}) at
+  {{biome_temperate_broadleaf_range}}, and the Mediterranean site ({{biome_mediterranean_sites}};
+  {{biome_mediterranean_pairs}} pairs) at {{biome_mediterranean_range}}. With one to three sites per biome, a biome's
+  result is largely its sites' results.</li>
+  <li><strong>Xeno-canto recordings.</strong> Species with under 100 xeno-canto recordings ({{xc_under100_pairs}}
+  pairs) average {{xc_under100_range}} AP across models, against {{xc_2000plus_range}} for species with 2,000 or more
+  ({{xc_2000plus_pairs}} pairs). The gap is smallest for BirdNET 2.4 ({{xc_under100_b24}} against
+  {{xc_2000plus_b24}}) and largest for BirdNET 3.0 ({{xc_under100_b30}} against {{xc_2000plus_b30}}).
+  {{xc_nodata_pairs}} pairs have no xeno-canto count yet.</li>
+  <li><strong>Labelled examples.</strong> Species with 1–9 labelled segments average {{prev_1_9_range}} AP across
+  models, 10–49 segments {{prev_10_49_range}}, and 50 or more {{prev_50plus_range}}. Part of this gap is measurement:
+  AP from a handful of positives is noisy.</li>
+</ul>
+<p>Each of these claims rests on groups of at least ten site–species pairs. The explorer's
+<a href="#groups">Groups view</a> shows these and other groupings (habitat, body mass, diet, call frequency) with
+intervals, for every site or one at a time.</p>
+<p><strong>The weakest species.</strong> A fixed rule, set before looking at the result: in clips mode, among the
+(site, species) pairs with at least {{weakest_min_pos}} labelled segments, the {{weakest_rule_n}} with the lowest
+best AP over the three models. A low value means every model struggles with that species at that site.
+{{weakest_top_site_n}} of the {{weakest_n}} are at {{weakest_top_site}}, and no model reaches AP {{weakest_max_ap|2f}}
+on any of them.</p>
 {{block:weakest_table}}
 </section>
 
 <section id="explorer">
 <h3>3.4 Species-level data and the explorer</h3>
+<p>The explorer holds every result above at finer grain. Choose clips or soundscapes and one site or all of them,
+then a view:</p>
+<ul class="notes">
+  <li><strong>Overview</strong>: each model at each site, with the best value per site in bold.</li>
+  <li><strong>Groups</strong>: mean per-species AP by trait, biome, prevalence, call frequency or xeno-canto count.</li>
+  <li><strong>Species</strong>: one row per site and species. Pick the metric, compare two models in the difference
+  column, search by name, family or habitat, hide species with fewer than ten positives, and add trait columns. Click a
+  name for its traits, calling times by local hour, call frequency band, and links to xeno-canto, eBird and the
+  Macaulay Library. Calling activity is calls per recorded hour; hours a site never recorded are shown as unknown.</li>
+  <li><strong>Hours</strong>: bird activity and model performance by local hour of day, from the soundscapes.</li>
+</ul>
 {{block:explorer}}
 </section>

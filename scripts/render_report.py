@@ -86,7 +86,7 @@ body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--body); mar
 main { display: flex; flex-direction: column; gap: 56px; min-width: 0; }
 header { display: flex; flex-direction: column; gap: 10px; }
 .byline { font-size: 15px; }
-.byline a, .prose a, footer a, .meta a { color: var(--accent); text-underline-offset: 3px; }
+.byline a, footer a, .meta a, article.report p a, article.report li a:not(.ext), article.report dd a, figcaption a { color: var(--accent); text-underline-offset: 3px; }
 article.report { display: flex; flex-direction: column; gap: 64px; }
 article.report > section { display: flex; flex-direction: column; gap: 18px; }
 article.report > section > section { margin-top: 18px; }
@@ -256,6 +256,18 @@ details.colpick { border: 0; padding: 0; position: relative; align-self: flex-en
 details.colpick summary { font-size: 14px; color: var(--fg); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 10px; background: var(--surface); }
 details.colpick[open] summary { margin-bottom: 8px; }
 .colgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9em, 1fr)); gap: 6px 14px; padding: 10px 12px; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
+.prose-list, ol.aims, ul.findings, ul.refs { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 8px; max-width: 74ch; }
+ul.refs { list-style: none; padding-left: 0; }
+ul.refs li { padding-left: 1.5em; text-indent: -1.5em; }
+.caveat { border-left: 3px solid var(--warn); padding-left: 12px; color: var(--muted); }
+aside.decision { background: var(--surface); border: 1px solid var(--rule); border-left: 4px solid var(--accent); border-radius: 6px;
+  padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; max-width: 78ch; }
+aside.decision h4 { font: 600 14px/1.3 var(--display); margin: 0; letter-spacing: .02em; }
+dl.criteria { grid-template-columns: minmax(9em, max-content) minmax(0, 1fr); max-width: 80ch; gap: 10px 18px; }
+dl.criteria dt { font: 600 13.5px/1.5 var(--body); }
+pre.code { margin: 0; overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; }
+pre.code code { border: 0; padding: 0; background: none; font-size: 12.5px; line-height: 1.6; }
+.baseline { display: flex; flex-direction: column; gap: 12px; }
 .empty { padding: 18px; color: var(--muted); background: var(--surface); border: 1px dashed var(--rule); border-radius: 6px; }
 
 details { border-top: 1px solid var(--rule); padding-top: 10px; }
@@ -850,6 +862,19 @@ view.addEventListener("input", e => {
 });
 if (!VIEWS.includes(state.view)) { state.groupBy = state.view; state.view = "groups"; }  // v2 saved views
 render();
+
+// Results 3.2: a fixed view (clips, cmAP per site with 95% intervals), independent of the explorer's state
+const baseline = document.getElementById("baseline-chart");
+if (baseline) {
+  const rows = D.headline.filter(r => r.mode === "clips" && r.site !== "All");
+  const sites = [...new Set(rows.map(r => r.site))].sort((a, b) => SITE_ORDER[a] - SITE_ORDER[b]);
+  const groups = sites.map(s => ({key: s, label: `${s} · ${siteName(s)}`,
+    sub: `${rows.find(r => r.site === s).n_species} species`}));
+  baseline.innerHTML = legend() + dotChart(groups, (g, m) => {
+    const r = rows.find(r => r.site === g.key && r.model === m.id);
+    return r && {v: r.cmAP, lo: r.cmAP_lo, hi: r.cmAP_hi};
+  }, "Segment cmAP, clips mode");
+}
 const explorer = document.getElementById("explorer");
 if (isExplorerToken(tok) && explorer) explorer.scrollIntoView();
 window.addEventListener("hashchange", () => {
@@ -1166,6 +1191,8 @@ def main() -> None:
         "replication_table": replication_table(p, TOL),
         "site_table": site_table(sites_df, h, density),
         "weakest_table": weakest_table(weakest, models),
+        "results_version": f" from repository version <code>{escape(version)}</code>" if version else "",
+        "baseline_chart": '<div id="baseline-chart" class="baseline"></div>',
         "fig_pipeline": (f'<figure><div class="fig-scroll">{pipeline_svg()}</div><figcaption>The birdeval pipeline. '
                          f'Models run once and their raw logits are cached per file; scoring, alignment and every '
                          f'metric work from the cache.</figcaption></figure>'),

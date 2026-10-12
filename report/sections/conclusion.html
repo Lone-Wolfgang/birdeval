@@ -1,1 +1,32 @@
-<p>The harness reproduces {{repl_n_within}} of {{repl_n_total}} published Perch values within {{repl_tol|2f}}.</p>
+<p><strong>What the groundwork establishes.</strong></p>
+<ul class="findings">
+  <li>The harness reproduces published Perch results: {{repl_n_within}} of {{repl_n_total}} per-site values within
+  {{repl_tol|2f}}. Results measured with it can be set beside the literature.</li>
+  <li>Model mechanics shape comparisons. Window length decides which calls a window can hear and which segment it
+  counts for; score scales decide how well one threshold works across species; label spaces decide which species a
+  model can be scored on at all.</li>
+  <li>The baseline has clear gaps: tropical sites ({{biome_tropical_range}} mean AP), species with little xeno-canto
+  audio ({{xc_under100_range}} for those under 100 recordings), and the {{weakest_rule_n}} weakest species in 3.3.</li>
+</ul>
+
+<p><strong>Next steps</strong> that the repository already points to:</p>
+<ul class="notes">
+  <li>Per-species calibration of presence confidence, so one target precision can be met with a threshold per
+  species rather than one for all (Phase 5 of the recording-level evaluation design).</li>
+  <li>Geographic filtering, available for both BirdNET versions in the <code>birdnet</code> package and not used
+  here.</li>
+  <li>Expert listening of the highest-scoring false positives, which each run lists in <code>fp_review.csv</code>, to
+  learn how many are missed labels rather than model errors.</li>
+  <li>Further checks on training-data overlap between each model and the BirdSet test sites.</li>
+</ul>
+<!-- TODO(author): improvement directions -->
+
+<p><strong>Limitations.</strong></p>
+<ul class="notes">
+  <li>BirdNET may have been trained on recordings from these test sites, so its results may be optimistic.</li>
+  <li>BirdNET 3.0 is a developer preview; its models and labels will change.</li>
+  <li>There are {{n_sites}} sites, one to three per biome, so a biome's result is largely its sites' results.</li>
+  <li>Xeno-canto counts are current counts, not counts as of any model's training.</li>
+  <li>No geographic filtering is applied.</li>
+  <li>BirdSet's labels are assumed exhaustive: a species calling but not annotated counts as a false positive.</li>
+</ul>

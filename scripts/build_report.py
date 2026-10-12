@@ -4,7 +4,8 @@ per-species results that the page groups, filters and sorts.
     python -I scripts/build_report.py RUN_DIR [RUN_DIR ...] [--out results/report]
 
 Writes CSVs to --out:
-  headline.csv  mode x site x model: segment cmAP (95% CI), AUROC, top-1, and
+  headline.csv  mode x site x model: segment cmAP (95% CI), AUROC, top-1, species
+                the model can't predict (n_uncovered), the birdnet package version, and
                 for soundscapes recording-level cmAP, recall at 90% precision and
                 evidence precision at that threshold (all claims, and claims right
                 at recording level).
@@ -116,7 +117,7 @@ def summaries(runs: list[Path], allow_nonpublic: bool = False) -> pd.DataFrame:
 def headline(s: pd.DataFrame) -> pd.DataFrame:
     cols = ["cmAP", "cmAP_lo", "cmAP_hi", "AUROC", "top1", "rec_cmAP", "rec_recall90",
             "rec_evidence90", "rec_evidence90_cond"]
-    out = s[KEY + ["evalset"] + cols + ["n_classes_scored", "n_segments"]].rename(
+    out = s[KEY + ["evalset"] + cols + ["n_classes_scored", "n_segments", "n_uncovered", "birdnet_pkg"]].rename(
         columns={"n_classes_scored": "n_species", "n_segments": "n_segs"})
     rows = []
     for mode, sub in out.groupby("mode"):
@@ -126,6 +127,8 @@ def headline(s: pd.DataFrame) -> pd.DataFrame:
             rows.append({"mode": mode, "site": "All", "model": model, **g[cols].mean().to_dict(),
                          "cmAP_lo": np.nan, "cmAP_hi": np.nan,
                          "n_species": g["n_species"].sum(), "n_segs": g["n_segs"].sum(),
+                         "n_uncovered": g["n_uncovered"].sum(),
+                         "birdnet_pkg": " ".join(sorted(set(g["birdnet_pkg"].dropna().astype(str)))) or None,
                          "sites": " ".join(sorted(done))})
     return pd.concat([out, pd.DataFrame(rows)], ignore_index=True).round(4)
 
