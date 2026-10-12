@@ -222,8 +222,10 @@ python -I scripts/fig_spectrogram.py                   # figure, og.png and clip
 python -I scripts/render_report.py                     # page -> docs/index.html
 ```
 
-Then commit `docs/`. In the repository's settings, choose Settings → Pages →
-Deploy from a branch → `main`, folder `/docs`.
+Then commit `docs/` and push to `main`. `.github/workflows/pages.yml`
+publishes `docs/` as committed whenever a push changes it (or on demand from
+the Actions tab); it does not re-render, since the tables are local. One-time
+setup: Settings → Pages → Source → **GitHub Actions**.
 
 - `docs/index.html` is self-contained apart from `docs/assets/`: the IBM
   Plex fonts (latin and latin-ext `woff2`, with `OFL.txt`), the spectrogram

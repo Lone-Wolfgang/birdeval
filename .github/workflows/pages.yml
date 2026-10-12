@@ -1,0 +1,38 @@
+# Publish the committed report page (docs/) to GitHub Pages.
+# The page is rendered locally (scripts/render_report.py needs results/, which is not
+# committed), so this only uploads docs/ as it is in the pushed commit.
+name: Publish report
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the page is fully rendered
+        run: |
+          test -f docs/index.html
+          if grep -q '{{' docs/index.html; then echo "docs/index.html has unfilled {{tokens}}"; exit 1; fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deployment
+        uses: actions/deploy-pages@v4
