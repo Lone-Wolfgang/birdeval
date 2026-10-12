@@ -77,7 +77,7 @@ not been checked for any model here, so BirdNET's results in particular may be o
   <p>Model windows and BirdSet's 5-second segments lie on different grids, so each window has to be assigned to a
   segment. Under the first rule tried, any window overlapping a segment by at least 1 second counted for it. Perch's
   5-second windows then scored calls in the neighbouring segment: on POW its soundscape cmAP was 0.471 against 0.567
-  on clips (historical numbers, under the old rule, from {{file:decision_point.md}}).</p>
+  on clips (historical numbers, under the old rule).</p>
   <p>The rule now used is the half-window rule: a window counts for the segment that holds more than half of it. It
   follows from the window geometry alone and was not tuned on results. Perch on POW now scores {{perch_pow_clips_cmap}}
   on clips and {{perch_pow_scape_cmap}} in the soundscapes.</p>
