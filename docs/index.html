@@ -260,7 +260,7 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule)
   <div class="eyebrow">birdeval · BirdSet POW · SSW · SNE · HSN · PER · NES · UHH · NBP</div>
   <h1>Bird-sound models on BirdSet: replication and baseline</h1>
   <p class="byline">Jordan Wolfgang Klein</p>
-  <p class="meta">Generated 2026-10-12 · results version 05d9c41-dirty</p>
+  <p class="meta">Generated 2026-10-12 · results version 2f6b742-dirty</p>
 </header>
 <nav class="toc" aria-label="Contents"><div class="toc-title">Contents</div><button class="toc-toggle" aria-expanded="false" aria-controls="toc-list">Contents<span class="toc-now"></span></button><div class="toc-list" id="toc-list"><ol><li><a href="#intro">1 Introduction</a></li><li><a href="#methods">2 Methods</a><ol><li><a href="#methods-sound">2.1 From sound to prediction</a></li><li><a href="#methods-dataset">2.2 Dataset: BirdSet</a></li><li><a href="#methods-models">2.3 Models: shared approach, different decisions</a></li><li><a href="#methods-pipeline">2.4 Running the models side by side</a></li><li><a href="#methods-criteria">2.5 Evaluation criteria</a></li></ol></li><li><a href="#results">3 Results</a><ol><li><a href="#results-replication">3.1 Replication</a></li><li><a href="#results-baseline">3.2 Overall baseline</a></li><li><a href="#results-weakest">3.3 Where performance is weakest</a></li><li><a href="#explorer">3.4 Species-level data and the explorer</a></li></ol></li><li><a href="#conclusion">4 Conclusion</a></li><li><a href="#reproduce">Reproduce this</a></li><li><a href="#references">References and licences</a></li></ol></div></nav>
 <main>
@@ -579,7 +579,7 @@ python -I scripts/hourly.py                            # by hour of day, from th
 python -I scripts/fig_spectrogram.py                   # the figure in 2.1
 python -I scripts/render_report.py                     # this page -> docs/index.html</code></pre>
 <p>Predictions are cached per file, so an interrupted run resumes where it stopped, and rebuilding the tables or the
-page never re-runs a model. This page was rendered on 2026-10-12 from repository version <code>05d9c41-dirty</code> with the
+page never re-runs a model. This page was rendered on 2026-10-12 from repository version <code>2f6b742-dirty</code> with the
 <code>birdnet</code> package 1.1.1. The prose lives in <code>report/sections</code> and its numbers come from
 the tables through <code>scripts/report_content.py</code>.</p>
 </section><section id="references"><h2>References and licences</h2><ul class="refs">
