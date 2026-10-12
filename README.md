@@ -235,6 +235,10 @@ ModelAdapter ──> raw logits ──> cache (.npz) ──> scorer ────
   bootstrap CI on cmAP that resamples whole groups (site, else source
   recording, else file). Segments within a recording are correlated, so
   resampling segments would give CIs that are too narrow.
+  Each draw reweights presorted scores (a group drawn twice counts twice)
+  instead of copying and re-sorting, and the draws run on `workers`
+  processes (config; default min(8, cores)). The numbers equal the
+  copy-and-resort computation and don't depend on `workers`.
 
 ### Three class scopes, on purpose
 

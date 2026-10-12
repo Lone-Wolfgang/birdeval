@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import average_precision_score
+from .metrics import ap, parallel_map
 
 
 def recall_at_precision(truth: np.ndarray, score: np.ndarray, target: float) -> dict:
@@ -99,7 +99,7 @@ def per_species(
         y, s = T[k, c], S[k, c]
         n_pos = int((y == 1).sum())
         row = {"species": classes[c], "n_units": int(k.sum()), "n_present": n_pos,
-               "ap": average_precision_score(y, s) if n_pos and (y == 0).any() else float("nan")}
+               "ap": ap(y, s) if n_pos and (y == 0).any() else float("nan")}
         for t, thr in thresholds.items():
             p = f"p{round(float(t) * 100)}"
             claim = s >= thr if np.isfinite(thr) else np.zeros(len(s), bool)
@@ -117,7 +117,7 @@ def rec_cmap(T: np.ndarray, S: np.ndarray, cols: np.ndarray) -> tuple[float, int
         k = T[:, c] != -1
         y = T[k, c]
         if (y == 1).any() and (y == 0).any():
-            aps.append(average_precision_score(y, S[k, c]))
+            aps.append(ap(y, S[k, c]))
     return (float(np.mean(aps)) if aps else float("nan")), len(aps)
 
 
@@ -144,6 +144,7 @@ def compute(
     n_boot: int = 200,
     seed: int = 0,
     E: np.ndarray | None = None,
+    workers: int = 1,
 ) -> dict:
     """T: [U, C] int8 unit truth; S: [U, C] presence scores; E: [U, C] evidence truth."""
     cols = np.arange(T.shape[1]) if restrict is None else np.flatnonzero(restrict)
@@ -155,12 +156,15 @@ def compute(
     edges = np.r_[0.0, np.asarray(duration_bins_s, float), np.inf]
     bin_of = np.digitize(duration_s, edges[1:-1], right=True)
     rng = np.random.default_rng(seed)
-    uniq = np.unique(groups)
-    by_group = {g: np.flatnonzero(groups == g) for g in uniq}
-    boots = [np.concatenate([by_group[g] for g in rng.choice(uniq, len(uniq))]) for _ in range(n_boot)]
-
+    uniq, g_idx = np.unique(groups, return_inverse=True)
+    # a draw is a weighting of the units: how often each unit's group was drawn
+    draws = [np.bincount(rng.choice(len(uniq), len(uniq)), minlength=len(uniq)).astype(np.int32)[g_idx]
+             for _ in range(n_boot)]
+    ops = {target: recall_at_precision(t, s, target) for target in targets}
+    boot = _Bootstrap(t, s, u, {k: op["threshold"] for k, op in ops.items()})
+    boot_rows = parallel_map(boot, "draw", draws, workers)
     for target in targets:
-        op = recall_at_precision(t, s, target)
+        op = ops[target]
         lp = list_precision(t, s, u, op["threshold"])
         res = {**op, "list_precision": lp["list_precision"],
                "list_precision_unit_mean": lp["list_precision_unit_mean"],
@@ -169,14 +173,9 @@ def compute(
             res |= evidence_precision(T, S, E, cols, op["threshold"])
         if not op["reached"]:
             res["note"] = f"no threshold reaches precision {target}"
-        if boots:
-            rec_b, lp_b = [], []
-            for idx in boots:
-                tb, sb, ub = _pairs(T, S, cols, idx)
-                rec_b.append(recall_at_precision(tb, sb, target)["recall"])
-                lp_b.append(list_precision(tb, sb, ub, op["threshold"])["list_precision"])
-            res["recall_ci95"] = _ci(rec_b)
-            res["list_precision_ci95"] = _ci(lp_b)
+        if boot_rows:
+            res["recall_ci95"] = _ci([r[target][0] for r in boot_rows])
+            res["list_precision_ci95"] = _ci([r[target][1] for r in boot_rows])
         res["by_duration"] = []
         for b in range(len(edges) - 1):
             rows = np.flatnonzero(bin_of == b)
@@ -194,6 +193,39 @@ def compute(
             })
         out["targets"][str(target)] = res
     return out
+
+
+class _Bootstrap:
+    """Known pairs sorted by score once; each draw reweights them by how often their unit was drawn.
+
+    Gives exactly what recall_at_precision and list_precision give on the
+    copied resample: cuts fall only between distinct scores, and pairs of
+    undrawn units add nothing to the cumulative counts.
+    """
+
+    def __init__(self, t: np.ndarray, s: np.ndarray, u: np.ndarray, thresholds: dict[float, float]):
+        order = np.argsort(-s, kind="stable")
+        self.s, self.pos, self.u = s[order], (t[order] == 1).astype(np.int32), u[order].astype(np.int32)
+        self.last = np.r_[self.s[1:] != self.s[:-1], True] if len(s) else np.zeros(0, bool)
+        self.thresholds = thresholds
+        # claims at a threshold are a prefix of the sorted pairs
+        self.n_claim = {k: int(np.searchsorted(-self.s, -thr, side="right")) if np.isfinite(thr) else 0
+                        for k, thr in thresholds.items()}
+
+    def draw(self, unit_w: np.ndarray) -> dict:
+        """{target: (recall at precision >= target, list precision at the global threshold)}."""
+        w = unit_w[self.u]
+        cw, ctp = np.cumsum(w, dtype=np.int64), np.cumsum(w * self.pos, dtype=np.int64)
+        tp, n = ctp[self.last], cw[self.last]
+        n_pos = tp[-1] if len(tp) else 0
+        prec = np.divide(tp, n, out=np.full(len(n), np.nan), where=n > 0)  # as tp / n on the resample
+        out = {}
+        for target, k in self.n_claim.items():
+            ok = prec >= target
+            recall = float(tp[ok].max() / n_pos) if n_pos and ok.any() else 0.0
+            lp = float(ctp[k - 1] / cw[k - 1]) if k and cw[k - 1] else float("nan")
+            out[target] = (recall, lp)
+        return out
 
 
 def _ci(vals: list[float]) -> tuple[float, float]:

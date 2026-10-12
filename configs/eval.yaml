@@ -42,6 +42,7 @@ recording_level:
 cache_dir: cache
 output_dir: results
 bootstrap: 200   # file-level bootstrap resamples for the cmAP CI (0 to skip)
+workers: null    # threads for the bootstrap draws; null = min(8, cores). Results don't depend on it
 
 models:
   birdnet_2.4:

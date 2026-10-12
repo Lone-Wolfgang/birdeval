@@ -52,8 +52,9 @@ def test_defaults_match_binary_metrics_exactly(restrict):
     old = _old_compute(y.astype(np.uint8), s, restrict)
     for k, v in old.items():
         assert summ[k] == v, k  # exact, not approx
-    assert metrics.bootstrap_cmap(y, s, groups, restrict, n=30) == _old_bootstrap(
-        y.astype(np.uint8), s, groups, restrict, n=30
+    # the bootstrap reweights presorted columns: equal up to float rounding
+    assert metrics.bootstrap_cmap(y, s, groups, restrict, n=30) == pytest.approx(
+        _old_bootstrap(y.astype(np.uint8), s, groups, restrict, n=30), abs=1e-12
     )
 
 

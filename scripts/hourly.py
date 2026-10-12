@@ -45,9 +45,9 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.stats import rankdata
 
 from birdeval import metrics, scoring
+from birdeval.metrics import ap, auroc
 from birdeval.align import align
 from birdeval.cache import PredictionCache
 from birdeval.evalsets import build_evalset
@@ -61,24 +61,6 @@ SITES = ["HSN", "NES", "PER", "POW", "SNE", "SSW", "UHH"]  # NBP has no clock ti
 TARGET = 0.9
 MIN_MINUTES = 30
 METRICS = ["AUROC", "cmAP", "top1", "recall", "precision", "false_alarms_h"]
-
-
-def auroc(t: np.ndarray, s: np.ndarray) -> float:
-    """Mann-Whitney AUROC with ties counted half; equals sklearn's roc_auc_score."""
-    pos = t == 1
-    n1, n0 = pos.sum(), (~pos).sum()
-    return float((rankdata(s)[pos].sum() - n1 * (n1 + 1) / 2) / (n1 * n0))
-
-
-def ap(t: np.ndarray, s: np.ndarray) -> float:
-    """Average precision as in sklearn: precision at each distinct threshold, weighted by recall gained."""
-    o = np.argsort(-s, kind="stable")
-    ss, tt = s[o], t[o] == 1
-    last = np.r_[ss[1:] != ss[:-1], True]
-    tp = np.cumsum(tt)[last]
-    n = (np.flatnonzero(last) + 1)
-    rec = tp / tp[-1]
-    return float(np.sum(np.diff(np.r_[0, rec]) * tp / n))
 
 
 class Block:

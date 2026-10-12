@@ -118,7 +118,7 @@ REC_DEFAULTS = {
 }
 
 
-def recording_level(ev, y, units, T, windows, scopes, rec, align_cfg, method, n_boot, d) -> dict:
+def recording_level(ev, y, units, T, windows, scopes, rec, align_cfg, method, n_boot, d, workers=1) -> dict:
     """Write recording_level.json, presence.csv, detections.csv and fp_review.csv
     for one model; return headline columns per scope for summary.csv.
 
@@ -143,6 +143,7 @@ def recording_level(ev, y, units, T, windows, scopes, rec, align_cfg, method, n_
         r = recording_metrics.compute(
             T, us.max_score, units["duration_s"].to_numpy(), units["group"].to_numpy(), restrict=mask,
             targets=rec["precision_targets"], duration_bins_s=rec["duration_bins_s"], n_boot=n_boot, E=E,
+            workers=workers,
         )
         out[scope] = r
         thresholds = {t: tr["threshold"] for t, tr in r["targets"].items()}
@@ -181,6 +182,7 @@ def evaluate(
     out_root = Path(cfg.get("output_dir", "results")) / (run_name or time.strftime("%Y%m%d-%H%M%S"))
     cache_root = cfg.get("cache_dir", "cache")
     n_boot = cfg.get("bootstrap", 200)
+    workers = cfg.get("workers") or metrics.default_workers()
     rec = {**REC_DEFAULTS, **(cfg.get("recording_level") or {})}
 
     models = models or {m: build_model(m, cfg["models"][m], tax) for m in model_names}
@@ -216,12 +218,12 @@ def evaluate(
             headline = {}
             if rec["enabled"]:
                 headline = recording_level(
-                    ev, y, units, T, windows[name], scopes, rec, align_cfg, score_cfg["method"], n_boot, d
+                    ev, y, units, T, windows[name], scopes, rec, align_cfg, score_cfg["method"], n_boot, d, workers
                 )
             for scope, mask in scopes:
                 summ, per_class = metrics.compute(y, aligned[name], ev.classes, restrict=mask)
                 if n_boot:
-                    summ["cmAP_ci95"] = metrics.bootstrap_cmap(y, aligned[name], groups, mask, n=n_boot)
+                    summ["cmAP_ci95"] = metrics.bootstrap_cmap(y, aligned[name], groups, mask, n=n_boot, workers=workers)
                 result[scope] = summ
                 per_class.to_csv(d / f"per_class_{scope}.csv", index=False)
                 rows.append({"evalset": ev.name, "model": name, "classes": scope, **summ, **headline.get(scope, {})})
