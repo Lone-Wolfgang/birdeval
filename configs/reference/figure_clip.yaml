@@ -1,0 +1,11 @@
+# Written by scripts/fig_spectrogram.py --choose
+file: Recording_3_Segment_01.ogg
+segment_start_s: 180.0
+species:
+- bkcchi
+- eastow
+- norcar
+source: BirdSet POW soundscapes (Powdermill Nature Reserve), CC0 1.0
+rule: two or three labelled species in the segment, most annotated calls; earliest
+  on ties
+context_s: 5.0

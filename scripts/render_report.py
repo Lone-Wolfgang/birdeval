@@ -26,6 +26,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).parent))
 from build_report import WEAKEST_MIN_POS, WEAKEST_N  # noqa: E402
+from report_figures import pipeline_svg, recall_example, recall_example_svg  # noqa: E402
 from report_content import TemplateError, build_facts, fill, render_sections, repo_link  # noqa: E402
 
 MODELS = {  # fixed order and colour slot: colour follows the model, never its rank
@@ -62,7 +63,7 @@ CSS = """
   --bg: #f5f7f6; --surface: #ffffff; --fg: #17201d; --muted: #56635e; --rule: #d9e0dc;
   --accent: #1d5c4b; --accent-fg: #ffffff; --grid: #e6ebe8; --hover: #eef3f0;
   --m1: #0072b2; --m2: #c26a00; --m3: #00896a;
-  --ok: #1d6b3a; --warn: #9a5b00;
+  --ok: #1d6b3a; --warn: #9a5b00; --show-light: inline; --show-dark: none;
   --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
   --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -70,11 +71,11 @@ CSS = """
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #111816; --surface: #18211e; --fg: #e4ebe8; --muted: #9aa8a2; --rule: #2c3833;
   --accent: #7cc7ae; --accent-fg: #0d1513; --grid: #24302b; --hover: #1f2a26;
-  --m1: #56b4e9; --m2: #e69f00; --m3: #3cc79a; --ok: #6fcf8f; --warn: #f0b04a; color-scheme: dark } }
+  --m1: #56b4e9; --m2: #e69f00; --m3: #3cc79a; --ok: #6fcf8f; --warn: #f0b04a; --show-light: none; --show-dark: inline; color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #111816; --surface: #18211e; --fg: #e4ebe8; --muted: #9aa8a2; --rule: #2c3833;
   --accent: #7cc7ae; --accent-fg: #0d1513; --grid: #24302b; --hover: #1f2a26;
-  --m1: #56b4e9; --m2: #e69f00; --m3: #3cc79a; --ok: #6fcf8f; --warn: #f0b04a; color-scheme: dark }
+  --m1: #56b4e9; --m2: #e69f00; --m3: #3cc79a; --ok: #6fcf8f; --warn: #f0b04a; --show-light: none; --show-dark: inline; color-scheme: dark }
 html { scroll-padding-top: 16px; }
 body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--body); margin: 0; }
 .page { max-width: 1240px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 64px;
@@ -126,6 +127,39 @@ section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--c); }
+
+/* Figures */
+figure { margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+figcaption { font-size: 13.5px; color: var(--muted); max-width: 74ch; }
+.fig-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 8px; }
+.fig-scroll svg { display: block; width: 100%; height: auto; min-width: 640px; }
+.fig-scroll svg text { font-family: var(--body); }
+.spec-light { display: var(--show-light); } .spec-dark { display: var(--show-dark); }
+.spec-frame { fill: none; stroke: var(--rule); }
+.seg-hi { fill: var(--accent); opacity: .07; }
+.seg-edge { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.callbox { fill: none; stroke: var(--fg); stroke-width: 1.5; opacity: .85; }
+.boxlabel { fill: var(--fg); font-size: 12px; font-weight: 600; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.win { fill: none; stroke: var(--c); stroke-width: 1.5; }
+.win.on { fill: var(--c); }
+.pbox rect { fill: var(--surface); stroke: var(--rule); stroke-width: 1.5; }
+.pbox.key rect { stroke: var(--accent); stroke-width: 2.5; }
+.ptext { fill: var(--fg); font-size: 12.5px; }
+.pbox .ptext:first-of-type { font-weight: 600; }
+.pnote { fill: var(--accent); font-size: 12px; font-weight: 600; }
+.parrow { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+.arrowhead { fill: var(--muted); }
+.claim rect { stroke-width: 1.5; }
+.claim.right rect { fill: var(--accent); stroke: var(--accent); }
+.claim.right text { fill: var(--accent-fg); font-size: 12px; font-weight: 600; }
+.claim.wrong rect { fill: var(--surface); stroke: var(--warn); stroke-dasharray: 4 3; }
+.claim.wrong text { fill: var(--warn); font-size: 12px; font-weight: 600; }
+.thr { stroke: var(--fg); stroke-width: 2; }
+.fig-key { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.fig-key span { display: inline-flex; align-items: center; gap: 6px; }
+.fig-key i { display: inline-block; width: 18px; height: 9px; border-radius: 3px; border: 1.5px solid var(--muted); }
+.fig-key i.on { background: var(--muted); }
+audio { width: 100%; max-width: 480px; }
 
 /* Explorer controls */
 .controls { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end;
@@ -948,6 +982,25 @@ def weakest_table(w: pd.DataFrame | None, models: list[str]) -> str:
     return static_table(head, body, left_cols=5, cls="weakest")
 
 
+def fig_spectrogram(assets: Path, clip: dict | None, audio: bool) -> str:
+    """The spectrogram figure: inline overlay over theme-swapped images, caption and sound."""
+    svg_f = assets / "fig_spectrogram.svg"
+    if not svg_f.exists():
+        return '<div class="empty">Figure not drawn yet: run scripts/fig_spectrogram.py.</div>'
+    where = (f"POW soundscape {escape(clip['file'])}, {clip['segment_start_s'] - clip['context_s']:g}–"
+             f"{clip['segment_start_s'] + 5 + clip['context_s']:g} s" if clip else "a POW soundscape")
+    sound = ('<audio controls preload="none" src="assets/clip.mp3">Your browser cannot play this clip.</audio>'
+             if audio and (assets / "clip.mp3").exists() else "")
+    key = ('<div class="fig-key"><span><i class="on"></i>window counts for the labelled segment</span>'
+           '<span><i></i>window does not count for it</span></div>')
+    return (f'<figure><div class="fig-scroll">{svg_f.read_text()}</div>{key}{sound}'
+            f'<figcaption>Fifteen seconds of {where} (BirdSet, CC0), as a mel spectrogram from 0 to 16 kHz. Boxes are '
+            f'BirdSet’s call annotations; the shaded band is one labelled 5-second segment, with its neighbours either '
+            f'side. Below, the windows each model scores: BirdNET 3-second windows every 1.5 seconds, Perch 5-second '
+            f'windows every 2.5 seconds. A filled window has more than half of its length inside the labelled segment, '
+            f'so its score counts for that segment; the others count for a neighbour.</figcaption></figure>')
+
+
 def records(df: pd.DataFrame) -> list[dict]:
     return json.loads(df.to_json(orient="records"))  # NaN -> null
 
@@ -1097,6 +1150,8 @@ def main() -> None:
         <button data-v="overview">Overview</button><button data-v="groups">Groups</button><button data-v="species">Species</button><button data-v="hours">Hours</button></div></div>
   </div>
   <div id="view" aria-live="polite"></div>"""
+    clip_f = Path("configs/reference/figure_clip.yaml")
+    clip = yaml.safe_load(clip_f.read_text()) if clip_f.exists() else None
     weakest_f = args.report / "weakest.csv"
     weakest = pd.read_csv(weakest_f) if weakest_f.exists() else None
     density_f = args.sites.with_name("site_density.csv")
@@ -1111,6 +1166,14 @@ def main() -> None:
         "replication_table": replication_table(p, TOL),
         "site_table": site_table(sites_df, h, density),
         "weakest_table": weakest_table(weakest, models),
+        "fig_pipeline": (f'<figure><div class="fig-scroll">{pipeline_svg()}</div><figcaption>The birdeval pipeline. '
+                         f'Models run once and their raw logits are cached per file; scoring, alignment and every '
+                         f'metric work from the cache.</figcaption></figure>'),
+        "fig_recall_example": (f'<figure><div class="fig-scroll">{recall_example_svg()}</div><figcaption>Recall at 90% '
+                               f'precision, illustrated with made-up scores. Claims are sorted by score; the threshold '
+                               f'is the lowest one at which at least 90% of the claims above it are right.'
+                               f'</figcaption></figure>'),
+        "fig_spectrogram": fig_spectrogram(out.parent / "assets", clip, bool(cfg.get("figure_audio", True))),
     }
     used: set = set()
     try:

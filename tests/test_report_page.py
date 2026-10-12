@@ -184,3 +184,51 @@ def test_nonpublic_evalsets_skipped(tmp_path, capsys):
     s = br.summaries([run])
     assert set(s["evalset"]) == {"birdset_HSN_scape"} and "ourdata_scape" in capsys.readouterr().out
     assert "ourdata_scape" in set(br.summaries([run], allow_nonpublic=True)["evalset"])
+
+
+# ---- figures --------------------------------------------------------------------------------
+
+def test_figure_script_on_synthetic_audio(tmp_path):
+    pytest.importorskip("matplotlib")
+    import fig_spectrogram as fs
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    t = np.arange(15 * fs.SR) / fs.SR
+    wave = 0.01 * rng.standard_normal(len(t)) + 0.2 * np.sin(2 * np.pi * 4000 * t) * ((t > 6) & (t < 7))
+    boxes = [fs.Box(6.0, 7.0, 3500, 4500, "Test Warbler"), fs.Box(11.0, 12.5, 1000, 2000, "Other Bird")]
+    written = fs.make_figure(wave.astype(np.float32), fs.SR, boxes, (5.0, 10.0), tmp_path, audio=False)
+    names = {p.name for p in written}
+    assert {"spectrogram-light.png", "spectrogram-dark.png", "fig_spectrogram.svg", "og.png"} <= names
+    svg = (tmp_path / "fig_spectrogram.svg").read_text()
+    assert svg.startswith("<svg") and 'role="img"' in svg and "aria-label=" in svg and "Test Warbler" in svg
+    from PIL import Image
+    with Image.open(tmp_path / "og.png") as im:
+        assert im.size == (1200, 630)
+
+
+def test_half_window_rule_in_figure():
+    import fig_spectrogram as fs
+    assert fs.counts_for_segment(5.0, 8.0, 5.0, 10.0)        # all inside
+    assert fs.counts_for_segment(8.0, 11.0, 5.0, 10.0)       # 2 of 3 s inside
+    assert not fs.counts_for_segment(3.5, 6.5, 5.0, 10.0)    # exactly half: not more than half
+    # windows start every hop from the file's start, wherever the excerpt begins
+    assert fs.windows(2.5, 5.0, file_offset=176.0, span=15.0)[0] == (-1.0, 4.0)
+
+
+def test_recall_example_matches_metric():
+    import numpy as np
+    import report_figures as rf
+    from birdeval.recording_metrics import recall_at_precision
+
+    ex = rf.recall_example()
+    s = np.array([c[0] for c in rf.EXAMPLE]); t = np.array([int(c[1]) for c in rf.EXAMPLE])
+    r = recall_at_precision(t, s, 0.9)
+    assert (ex["threshold"], ex["recall"], ex["precision"]) == (r["threshold"], r["recall"], r["precision"])
+
+
+def test_figures_have_text_alternatives(page):
+    imgs = re.findall(r"<img\b[^>]*>", page)
+    assert all(re.search(r'\balt="[^"]+"', i) for i in imgs)
+    svgs = re.findall(r'<svg\b[^>]*role="img"[^>]*>', page)
+    assert svgs and all(re.search(r'aria-label="[^"]+"', s) for s in svgs)

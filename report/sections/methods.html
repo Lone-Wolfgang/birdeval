@@ -1,6 +1,7 @@
 <section id="methods-sound">
 <h3>2.1 From sound to prediction</h3>
 <p>Each model hears a fixed window of audio and returns a score for every species it knows.</p>
+{{block:fig_spectrogram}}
 </section>
 
 <section id="methods-dataset">
@@ -33,6 +34,7 @@
 
 <section id="methods-pipeline">
 <h3>2.4 Running the models side by side</h3>
+{{block:fig_pipeline}}
 <ul class="notes">
   <li>Species names follow the 2025 eBird taxonomy. Older model names are mapped through
   {{file:configs/taxonomy/synonyms.yaml}}. Every species at every site is scored for every model, including the 4
@@ -51,6 +53,7 @@
   presences it finds. Per clip in clips mode, per recording unit in soundscape mode.</dd>
   <dt>Positives</dt><dd>Labelled 5-second segments with the species at that site.</dd>
 </dl>
+{{block:fig_recall_example}}
 <p>Per-species AP is noisy for species with only a few labelled segments; group means pool many species but their
 intervals still widen as groups get small.</p>
 </section>

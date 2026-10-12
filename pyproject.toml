@@ -22,8 +22,8 @@ models = ["birdnet[onnx]>=1.1"]
 perch = ["birdnet>=1.1", "tensorflow>=2.20"]
 # BirdSet uses a HF loading script; datasets 4.x removed script support.
 birdset = ["datasets>=2.19,<4"]
-# scripts/avonet_traits.py reads AVONET's xlsx
-report = ["openpyxl"]
+# scripts/avonet_traits.py reads AVONET's xlsx; scripts/fig_spectrogram.py draws with matplotlib
+report = ["openpyxl", "matplotlib"]
 dev = ["pytest"]
 
 [project.scripts]
