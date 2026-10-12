@@ -1,0 +1,26 @@
+<section id="results-replication">
+<h3>3.1 Replication</h3>
+<p class="lede">Perch V2 in clips mode against the three Perch 2.0 variants in van Merriënboer et al. 2025
+(arXiv:2508.04665, Appendix C, Table 4). A value counts as within if it is no more than {{repl_tol|2f}} outside the
+published range. {{repl_n_within}} of {{repl_n_total}} values on {{repl_sites}} are within.</p>
+{{block:replication_table}}
+<p class="meta">POW is not in the Perch 2.0 table: BirdSet uses it as a validation set. BirdNET has no published
+per-site figures; BirdSet left it out because its training data may overlap the test sets.</p>
+</section>
+
+<section id="results-baseline">
+<h3>3.2 Overall baseline</h3>
+<p>Averaged over {{clips_n_sites_mean}} sites, clips cmAP is {{clips_cmap_b24}} for BirdNET 2.4, {{clips_cmap_b30}}
+for BirdNET 3.0 and {{clips_cmap_perch}} for Perch V2.</p>
+</section>
+
+<section id="results-weakest">
+<h3>3.3 Where performance is weakest</h3>
+<p>Mean per-species AP on species with 1–9 labelled segments is {{prev_1_9_range}} across models, against
+{{prev_50plus_range}} for species with 50 or more.</p>
+</section>
+
+<section id="explorer">
+<h3>3.4 Species-level data and the explorer</h3>
+{{block:explorer}}
+</section>

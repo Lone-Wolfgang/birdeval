@@ -96,7 +96,6 @@ p { margin: 0; max-width: 70ch; }
 section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 #view { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .lede { color: var(--muted); }
-ul.takeaways { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; max-width: 74ch; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--c); }
@@ -149,6 +148,9 @@ th .arrow { font-size: 10px; width: 1ch; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover td { background: var(--hover); }
 tr.total td { border-top: 2px solid var(--rule); font-weight: 600; }
+table.models td, table.static td { white-space: normal; vertical-align: top; min-width: 9em; }
+table.models td:first-child { font-weight: 600; min-width: 8em; }
+table.models td:last-child { color: var(--muted); min-width: 14em; }
 td.best { font-weight: 700; }
 td.dim { color: var(--muted); }
 .ci-txt { color: var(--muted); font-size: 12px; font-weight: 400; }
@@ -211,47 +213,102 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule)
   <div class="eyebrow">birdeval · BirdSet POW · SSW · SNE · HSN · PER · NES · UHH · NBP</div>
   <h1>Bird-sound models on BirdSet: replication and baseline</h1>
   <p class="byline">Jordan Wolfgang Klein</p>
-  <p class="meta">Generated 2026-10-12 · results version f782871-dirty</p>
+  <p class="meta">Generated 2026-10-12 · results version e80dfb1-dirty</p>
 </header>
 <nav class="toc" aria-label="Contents"><div class="toc-title">Contents</div><button class="toc-toggle" aria-expanded="false" aria-controls="toc-list">Contents<span class="toc-now"></span></button><div class="toc-list" id="toc-list"><ol><li><a href="#intro">1 Introduction</a></li><li><a href="#methods">2 Methods</a><ol><li><a href="#methods-sound">2.1 From sound to prediction</a></li><li><a href="#methods-dataset">2.2 Dataset: BirdSet</a></li><li><a href="#methods-models">2.3 Models: shared approach, different decisions</a></li><li><a href="#methods-pipeline">2.4 Running the models side by side</a></li><li><a href="#methods-criteria">2.5 Evaluation criteria</a></li></ol></li><li><a href="#results">3 Results</a><ol><li><a href="#results-replication">3.1 Replication</a></li><li><a href="#results-baseline">3.2 Overall baseline</a></li><li><a href="#results-weakest">3.3 Where performance is weakest</a></li><li><a href="#explorer">3.4 Species-level data and the explorer</a></li></ol></li><li><a href="#conclusion">4 Conclusion</a></li><li><a href="#reproduce">Reproduce this</a></li><li><a href="#references">References and licences</a></li></ol></div></nav>
 <main>
 <article class="report">
-<section id="intro"><h2><span class="secnum">1</span>Introduction</h2><p>BirdNET 2.4, BirdNET 3.0, Perch V2 on 8 BirdSet test sites.
-  Clips mode follows BirdSet's protocol: every species in the site's label set, 5-second test clips
-  (8 sites). Soundscape mode scores the full recordings (8 sites).</p></section><section id="methods"><h2><span class="secnum">2</span>Methods</h2><section id="methods-sound"><h3><span class="secnum">2.1</span>From sound to prediction</h3></section><section id="methods-dataset"><h3><span class="secnum">2.2</span>Dataset: BirdSet</h3><ul class="notes">
-    <li>BirdNET may have been trained on recordings from these test sets, so its scores may be optimistic.
-    BirdSet excluded it for this reason.</li>
-    <li>Species names follow the 2025 eBird taxonomy. Older model names are mapped through
-    <code>configs/taxonomy/synonyms.yaml</code>. Every species at every site is scored for every model, including the 4 species
-    BirdNET 2.4 cannot predict, which count against it.</li>
-    <li>Per-species AP is noisy for species with only a few labelled segments; group means pool many species but
-    their intervals still widen as groups get small.</li>
-    <li>Site biomes are WWF biomes assigned per site (<code>configs/reference/sites.csv</code>); the sites are small areas, so
-    a label describes the site's setting, not every recorder.</li>
-    <li>POW is BirdSet's validation set, not a test set. It is included here like the others.</li>
-    <li>Calling times and call frequency bands come from BirdSet's call-level annotations (<code>scripts/site_calls.py</code>).
-    BirdSet's “local_time” is UTC for PER and SSW (their file names end in Z); those are converted to local time.
-    Most sites record only around dawn (PER 05–06 h, POW and HSN about 05–09 h); SSW records all day and UHH 05–23 h,
-    so only those two show full daily patterns. Activity is calls per recorded hour, and unrecorded hours are shown as
-    unknown. NBP has no times or frequency boxes.</li>
-    <li>Body mass, lifestyle and habitat are AVONET; diet, foraging stratum and the nocturnal flag are EltonTraits 1.0,
-    matched to eBird names through AVONET's crosswalk. Xeno-canto counts were queried on 2026-10-11: they are today's counts, larger than what any model trained on, and xeno-canto's IOC names can split or lump differently from eBird's.</li>
-  </ul></section><section id="methods-models"><h3><span class="secnum">2.3</span>Models: shared approach, different decisions</h3></section><section id="methods-pipeline"><h3><span class="secnum">2.4</span>Running the models side by side</h3></section><section id="methods-criteria"><h3><span class="secnum">2.5</span>Evaluation criteria</h3><dl>
-    <dt>cmAP</dt><dd>Average precision per species, averaged over species. Treats rare and common species equally.</dd>
-    <dt>AUROC</dt><dd>Chance a positive segment scores higher than a negative one, averaged over species.</dd>
-    <dt>Top-1</dt><dd>Share of segments with at least one label where the top-scoring species is one of them.</dd>
-    <dt>Recording cmAP</dt><dd>cmAP for species presence per recording unit, from soundscape mode.</dd>
-    <dt>Recall @90%P</dt><dd>At the single score threshold where 90% of a model's claims are correct, the share of
-    true presences it finds. Per clip in clips mode, per recording unit in soundscape mode.</dd>
-    <dt>Positives</dt><dd>Labelled 5-second segments with the species at that site.</dd>
-  </dl></section></section><section id="results"><h2><span class="secnum">3</span>Results</h2><section id="results-replication"><h3><span class="secnum">3.1</span>Replication</h3><p class="lede">Perch V2 in clips mode against the three Perch 2.0 variants in van Merriënboer et al. 2025
-  (arXiv:2508.04665, Appendix C, Table 4). A value counts as within if it is no more than 0.02 outside the published
-  range. 21 of 21 values on HSN, NBP, NES, PER, SNE, SSW, UHH are within.</p>
-  <details><summary>Show the table</summary>
-  <div class="table-wrap"><table><thead><tr><th class="l">Site</th><th class="l">Metric</th><th class="">Ours</th><th class="">Published</th><th class="">Distance</th><th class="">Result</th></tr></thead><tbody><tr><td class="l">HSN</td><td class="l">AUROC</td><td class="">0.896</td><td class="">0.896–0.915</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">HSN</td><td class="l">cmAP</td><td class="">0.529</td><td class="">0.504–0.533</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">HSN</td><td class="l">Top-1</td><td class="">0.656</td><td class="">0.620–0.659</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">NBP</td><td class="l">AUROC</td><td class="">0.931</td><td class="">0.933–0.941</td><td class="">-0.002</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">NBP</td><td class="l">cmAP</td><td class="">0.653</td><td class="">0.661–0.695</td><td class="">-0.008</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">NBP</td><td class="l">Top-1</td><td class="">0.705</td><td class="">0.677–0.724</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">NES</td><td class="l">AUROC</td><td class="">0.951</td><td class="">0.948–0.953</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">NES</td><td class="l">cmAP</td><td class="">0.397</td><td class="">0.382–0.403</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">NES</td><td class="l">Top-1</td><td class="">0.552</td><td class="">0.504–0.562</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">PER</td><td class="l">AUROC</td><td class="">0.783</td><td class="">0.783–0.802</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">PER</td><td class="l">cmAP</td><td class="">0.232</td><td class="">0.230–0.255</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">PER</td><td class="l">Top-1</td><td class="">0.524</td><td class="">0.528–0.535</td><td class="">-0.004</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">SNE</td><td class="l">AUROC</td><td class="">0.887</td><td class="">0.883–0.887</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">SNE</td><td class="l">cmAP</td><td class="">0.340</td><td class="">0.341–0.351</td><td class="">-0.001</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">SNE</td><td class="l">Top-1</td><td class="">0.788</td><td class="">0.763–0.791</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">SSW</td><td class="l">AUROC</td><td class="">0.973</td><td class="">0.968–0.974</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">SSW</td><td class="l">cmAP</td><td class="">0.453</td><td class="">0.455–0.469</td><td class="">-0.003</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">SSW</td><td class="l">Top-1</td><td class="">0.773</td><td class="">0.778–0.789</td><td class="">-0.005</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">UHH</td><td class="l">AUROC</td><td class="">0.912</td><td class="">0.896–0.912</td><td class="">+0.001</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">UHH</td><td class="l">cmAP</td><td class="">0.380</td><td class="">0.368–0.380</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">UHH</td><td class="l">Top-1</td><td class="">0.580</td><td class="">0.462–0.595</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr></tbody></table></div>
-  </details>
-  <p class="meta">POW is not in the Perch 2.0 table: BirdSet uses it as a validation set.
-  BirdNET has no published per-site figures; BirdSet left it out because its training data may overlap the test sets.</p></section><section id="results-baseline"><h3><span class="secnum">3.2</span>Overall baseline</h3><ul class="takeaways"><li>Averaged over 8 sites, clips cmAP is BirdNET 3.0 0.523, BirdNET 2.4 0.471, Perch V2 0.443.</li><li>Highest cmAP per site: BirdNET 3.0 on HSN, NBP, POW, SSW; BirdNET 2.4 on NES, PER, SNE; Perch V2 on UHH. The top two models' intervals overlap on HSN, PER, SNE, UHH.</li><li>In the soundscapes, recall at 90% precision per recording unit (mean over sites) is BirdNET 3.0 0.51, BirdNET 2.4 0.51, Perch V2 0.35: the gap between models is larger than in cmAP.</li><li>Perch V2 matches the Perch 2.0 paper: 21 of 21 published values on 7 sites are reproduced within 0.02.</li><li>Every model does better on species with many labelled segments (50+ segments: 0.48–0.58 mean AP) than on rare ones (1–9 segments: 0.29–0.38).</li><li>By hour of day, against each site's own all-day AUROC, the models do worst at 14:00 (−0.09 to −0.06 across models; SSW, UHH, 40 recordings, 51 species) and best at 20:00 (+0.03 to +0.05 across models; SSW, UHH, 24 recordings, 36 species). Hours other than dawn rest on one to three sites; see the Hours view.</li></ul></section><section id="results-weakest"><h3><span class="secnum">3.3</span>Where performance is weakest</h3></section><section id="explorer"><h3><span class="secnum">3.4</span>Species-level data and the explorer</h3><div class="controls" role="group" aria-label="Report filters">
+<section id="intro"><h2><span class="secnum">1</span>Introduction</h2><p>BirdNET 2.4, BirdNET 3.0, Perch V2 on 8 BirdSet test sites. Clips mode follows BirdSet's protocol: every species in the
+site's label set, scored on its 5-second test clips (HSN, NBP, NES, PER, POW, SNE, SSW, UHH). Soundscape mode scores the full recordings
+(HSN, NBP, NES, PER, POW, SNE, SSW, UHH).</p>
+</section><section id="methods"><h2><span class="secnum">2</span>Methods</h2><section id="methods-sound"><h3><span class="secnum">2.1</span>From sound to prediction</h3>
+<p>Each model hears a fixed window of audio and returns a score for every species it knows.</p>
+</section>
+
+<section id="methods-dataset"><h3><span class="secnum">2.2</span>Dataset: BirdSet</h3>
+<div class="table-wrap"><table><thead><tr><th class="l">Site</th><th class="l">Name</th><th class="l">Region</th><th class="l">Biome</th></tr></thead><tbody><tr><td class="l"><strong>POW</strong></td><td class="l">Powdermill Nature Reserve</td><td class="l">Pennsylvania, USA</td><td class="l">Temperate broadleaf &amp; mixed forest</td></tr><tr><td class="l"><strong>SSW</strong></td><td class="l">Sapsucker Woods</td><td class="l">New York, USA</td><td class="l">Temperate broadleaf &amp; mixed forest</td></tr><tr><td class="l"><strong>SNE</strong></td><td class="l">Sierra Nevada</td><td class="l">California, USA</td><td class="l">Temperate conifer forest</td></tr><tr><td class="l"><strong>HSN</strong></td><td class="l">High Sierra Nevada</td><td class="l">California, USA</td><td class="l">Temperate conifer forest</td></tr><tr><td class="l"><strong>PER</strong></td><td class="l">Amazon Basin</td><td class="l">Peru</td><td class="l">Tropical moist broadleaf forest</td></tr><tr><td class="l"><strong>NES</strong></td><td class="l">Colombia &amp; Costa Rica</td><td class="l">Colombia and Costa Rica</td><td class="l">Tropical moist broadleaf forest</td></tr><tr><td class="l"><strong>UHH</strong></td><td class="l">Hawaiʻi Island</td><td class="l">Hawaiʻi, USA</td><td class="l">Tropical moist broadleaf forest</td></tr><tr><td class="l"><strong>NBP</strong></td><td class="l">NIPS4BPlus</td><td class="l">France and Spain</td><td class="l">Mediterranean forest, woodland &amp; scrub</td></tr></tbody></table></div>
+<ul class="notes">
+  <li>Site biomes are WWF biomes assigned per site (<code>configs/reference/sites.csv</code>); the sites are small areas,
+  so a label describes the site's setting, not every recorder.</li>
+  <li>POW is BirdSet's validation set, not a test set. It is included here like the others.</li>
+  <li>Calling times and call frequency bands come from BirdSet's call-level annotations
+  (<code>scripts/site_calls.py</code>). BirdSet's “local_time” is UTC for PER and SSW (their file names end in Z); those are
+  converted to local time. Most sites record only around dawn (PER 05–06 h, POW and HSN about 05–09 h); SSW records all
+  day and UHH 05–23 h, so only those two show full daily patterns. Activity is calls per recorded hour, and unrecorded
+  hours are shown as unknown. NBP has no times or frequency boxes.</li>
+  <li>Body mass, lifestyle and habitat are AVONET; diet, foraging stratum and the nocturnal flag are EltonTraits 1.0,
+  matched to eBird names through AVONET's crosswalk. Xeno-canto counts were queried on 2026-10-11: they are
+  today's counts, larger than what any model trained on, and xeno-canto's IOC names can split or lump differently from
+  eBird's.</li>
+</ul>
+</section>
+
+<section id="methods-models"><h3><span class="secnum">2.3</span>Models: shared approach, different decisions</h3>
+<div class="table-wrap"><table class="models">
+<thead><tr><th class="l"></th><th class="l"><span class="m1"><span class="swatch"></span>BirdNET 2.4</span></th><th class="l"><span class="m2"><span class="swatch"></span>BirdNET 3.0</span></th><th class="l"><span class="m3"><span class="swatch"></span>Perch V2</span></th><th class="l">Why it matters here</th></tr></thead>
+<tbody>
+<tr><td class="l">Release used</td><td class="l">V2.4 (Zenodo 15050749)</td><td class="l">BirdNET+ V3.0 Developer Preview 3.1, “Global 11K”, 2026-06-15 (doi:10.5281/zenodo.20703646)</td><td class="l">Perch 2.0, Google DeepMind (original on Kaggle: google/bird-vocalization-classifier)</td><td class="l"></td></tr>
+<tr><td class="l">Developer</td><td class="l">K. Lisa Yang Center, Cornell Lab of Ornithology &amp; Chemnitz University of Technology</td><td class="l">Same</td><td class="l">Google DeepMind</td><td class="l"></td></tr>
+<tr><td class="l">Sample rate</td><td class="l">48 kHz</td><td class="l">32 kHz</td><td class="l">32 kHz</td><td class="l" rowspan="2">High-pitched species: BirdNET hears up to 15 kHz, Perch's spectrogram reaches 16 kHz.</td></tr>
+<tr><td class="l">Frequency input</td><td class="l">0–15 kHz, two mel spectrograms (0–3 kHz and 0.5–15 kHz)</td><td class="l">0–15 kHz</td><td class="l">128 mel bins, 60 Hz–16 kHz</td></tr>
+<tr><td class="l">Window / hop in birdeval</td><td class="l">3 s / 1.5 s</td><td class="l">3 s / 1.5 s (the model accepts variable length)</td><td class="l">5 s / 2.5 s</td><td class="l">How model windows map onto BirdSet's 5-second labels.</td></tr>
+<tr><td class="l">Architecture</td><td class="l">EfficientNet-B0-like, 1024-d embedding</td><td class="l">Not documented</td><td class="l">EfficientNet-B3, ~12M parameters; linear, prototype and source-prediction heads; self-distillation</td><td class="l"></td></tr>
+<tr><td class="l">Classes</td><td class="l">6,522 (incl. 11 non-event)</td><td class="l">11,560: birds 9,834; insects 699; amphibians 647; mammals 350; other 30</td><td class="l">14,795 (14,597 species + 198 FSD50K sound classes)</td><td class="l">Coverage: BirdNET 2.4 cannot predict 4 BirdSet species, which count against it.</td></tr>
+<tr><td class="l">Training data</td><td class="l">Not documented</td><td class="l">Not documented (“much larger and more diverse”)</td><td class="l">1,542,778 recordings: xeno-canto 896,255; iNaturalist 571,698; Tierstimmenarchiv 33,859; FSD50K 40,966</td><td class="l">Directly relevant to underrepresented species.</td></tr>
+<tr><td class="l">Output used</td><td class="l">Logits</td><td class="l">Probabilities only, so logits are reconstructed</td><td class="l">Raw logits (high for every species)</td><td class="l">One threshold means something different for each model.</td></tr>
+<tr><td class="l">Geographic model (birdnet package)</td><td class="l">Yes</td><td class="l">Yes (Geomodel V3.0.4)</td><td class="l">No</td><td class="l">Available for BirdNET, not used here.</td></tr>
+<tr><td class="l">Model licence</td><td class="l">Not documented</td><td class="l">CC BY-SA 4.0 + preview terms of use</td><td class="l">Apache-2.0</td><td class="l"></td></tr>
+<tr><td class="l">Status</td><td class="l">Stable</td><td class="l">Developer preview</td><td class="l">Stable</td><td class="l">BirdNET 3.0's models and labels will change.</td></tr>
+</tbody></table></div>
+
+<ul class="notes">
+  <li>BirdNET may have been trained on recordings from these test sets, so its scores may be optimistic. BirdSet
+  excluded it for this reason.</li>
+</ul>
+</section>
+
+<section id="methods-pipeline"><h3><span class="secnum">2.4</span>Running the models side by side</h3>
+<ul class="notes">
+  <li>Species names follow the 2025 eBird taxonomy. Older model names are mapped through
+  <code>configs/taxonomy/synonyms.yaml</code>. Every species at every site is scored for every model, including the 4
+  species BirdNET 2.4 cannot predict, which count against it.</li>
+</ul>
+</section>
+
+<section id="methods-criteria"><h3><span class="secnum">2.5</span>Evaluation criteria</h3>
+<dl>
+  <dt>cmAP</dt><dd>Average precision per species, averaged over species. Treats rare and common species equally.</dd>
+  <dt>AUROC</dt><dd>Chance a positive segment scores higher than a negative one, averaged over species.</dd>
+  <dt>Top-1</dt><dd>Share of segments with at least one label where the top-scoring species is one of them.</dd>
+  <dt>Recording cmAP</dt><dd>cmAP for species presence per recording unit, from soundscape mode.</dd>
+  <dt>Recall @90%P</dt><dd>At the single score threshold where 90% of a model's claims are correct, the share of true
+  presences it finds. Per clip in clips mode, per recording unit in soundscape mode.</dd>
+  <dt>Positives</dt><dd>Labelled 5-second segments with the species at that site.</dd>
+</dl>
+<p>Per-species AP is noisy for species with only a few labelled segments; group means pool many species but their
+intervals still widen as groups get small.</p>
+</section>
+</section><section id="results"><h2><span class="secnum">3</span>Results</h2><section id="results-replication"><h3><span class="secnum">3.1</span>Replication</h3>
+<p class="lede">Perch V2 in clips mode against the three Perch 2.0 variants in van Merriënboer et al. 2025
+(arXiv:2508.04665, Appendix C, Table 4). A value counts as within if it is no more than 0.02 outside the
+published range. 21 of 21 values on HSN, NBP, NES, PER, SNE, SSW, UHH are within.</p>
+<div class="table-wrap"><table><thead><tr><th class="l">Site</th><th class="l">Metric</th><th class="">Ours</th><th class="">Published range</th><th class="">Distance</th><th class="">Result</th></tr></thead><tbody><tr><td class="l">HSN</td><td class="l">AUROC</td><td class="">0.896</td><td class="">0.896–0.915</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">HSN</td><td class="l">cmAP</td><td class="">0.529</td><td class="">0.504–0.533</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">HSN</td><td class="l">Top-1</td><td class="">0.656</td><td class="">0.620–0.659</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">NBP</td><td class="l">AUROC</td><td class="">0.931</td><td class="">0.933–0.941</td><td class="">-0.002</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">NBP</td><td class="l">cmAP</td><td class="">0.653</td><td class="">0.661–0.695</td><td class="">-0.008</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">NBP</td><td class="l">Top-1</td><td class="">0.705</td><td class="">0.677–0.724</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">NES</td><td class="l">AUROC</td><td class="">0.951</td><td class="">0.948–0.953</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">NES</td><td class="l">cmAP</td><td class="">0.397</td><td class="">0.382–0.403</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">NES</td><td class="l">Top-1</td><td class="">0.552</td><td class="">0.504–0.562</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">PER</td><td class="l">AUROC</td><td class="">0.783</td><td class="">0.783–0.802</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">PER</td><td class="l">cmAP</td><td class="">0.232</td><td class="">0.230–0.255</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">PER</td><td class="l">Top-1</td><td class="">0.524</td><td class="">0.528–0.535</td><td class="">-0.004</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">SNE</td><td class="l">AUROC</td><td class="">0.887</td><td class="">0.883–0.887</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">SNE</td><td class="l">cmAP</td><td class="">0.340</td><td class="">0.341–0.351</td><td class="">-0.001</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">SNE</td><td class="l">Top-1</td><td class="">0.788</td><td class="">0.763–0.791</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">SSW</td><td class="l">AUROC</td><td class="">0.973</td><td class="">0.968–0.974</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">SSW</td><td class="l">cmAP</td><td class="">0.453</td><td class="">0.455–0.469</td><td class="">-0.003</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">SSW</td><td class="l">Top-1</td><td class="">0.773</td><td class="">0.778–0.789</td><td class="">-0.005</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">UHH</td><td class="l">AUROC</td><td class="">0.912</td><td class="">0.896–0.912</td><td class="">+0.001</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">UHH</td><td class="l">cmAP</td><td class="">0.380</td><td class="">0.368–0.380</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr><tr><td class="l">UHH</td><td class="l">Top-1</td><td class="">0.580</td><td class="">0.462–0.595</td><td class="">+0.000</td><td class=""><span class="chip ok">Within</span></td></tr></tbody></table></div>
+<p class="meta">POW is not in the Perch 2.0 table: BirdSet uses it as a validation set. BirdNET has no published
+per-site figures; BirdSet left it out because its training data may overlap the test sets.</p>
+</section>
+
+<section id="results-baseline"><h3><span class="secnum">3.2</span>Overall baseline</h3>
+<p>Averaged over 8 sites, clips cmAP is 0.471 for BirdNET 2.4, 0.523
+for BirdNET 3.0 and 0.443 for Perch V2.</p>
+</section>
+
+<section id="results-weakest"><h3><span class="secnum">3.3</span>Where performance is weakest</h3>
+<p>Mean per-species AP on species with 1–9 labelled segments is 0.29–0.38 across models, against
+0.48–0.58 for species with 50 or more.</p>
+</section>
+
+<section id="explorer"><h3><span class="secnum">3.4</span>Species-level data and the explorer</h3>
+<div class="controls" role="group" aria-label="Report filters">
     <div class="ctl"><span class="ctl-label" id="l-mode">Mode</span>
       <div class="seg" data-key="mode" aria-labelledby="l-mode">
         <button data-v="clips">Clips</button><button data-v="scape">Soundscapes</button></div></div>
@@ -261,7 +318,17 @@ footer { color: var(--muted); font-size: 13px; border-top: 1px solid var(--rule)
       <div class="seg" data-key="view" aria-labelledby="l-view">
         <button data-v="overview">Overview</button><button data-v="groups">Groups</button><button data-v="species">Species</button><button data-v="hours">Hours</button></div></div>
   </div>
-  <div id="view" aria-live="polite"></div></section></section><section id="conclusion"><h2><span class="secnum">4</span>Conclusion</h2></section><section id="reproduce"><h2>Reproduce this</h2></section><section id="references"><h2>References and licences</h2></section>
+  <div id="view" aria-live="polite"></div>
+</section>
+</section><section id="conclusion"><h2><span class="secnum">4</span>Conclusion</h2><p>The harness reproduces 21 of 21 published Perch values within 0.02.</p>
+</section><section id="reproduce"><h2>Reproduce this</h2><p>The page is generated by <code>scripts/render_report.py</code> from the tables <code>scripts/build_report.py</code> writes.</p>
+</section><section id="references"><h2>References and licences</h2><ul class="notes">
+  <li>Traits: AVONET, Tobias et al. 2022, Ecology Letters 25:581 (CC BY 4.0); EltonTraits 1.0, Wilman et al. 2014,
+  Ecology 95:2027 (CC0).</li>
+  <li>Common names and links: eBird/Clements taxonomy 2025; xeno-canto.org; Macaulay Library.</li>
+  <li>Published figures: van Merriënboer et al. 2025 (Perch 2.0); Rauch et al. 2025 (BirdSet, arXiv:2403.10380).</li>
+</ul>
+</section>
 </article>
 </main>
 <footer><p>Jordan Wolfgang Klein · generated 2026-10-12 by <code>scripts/render_report.py</code>.</p></footer>

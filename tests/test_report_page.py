@@ -80,3 +80,50 @@ def test_guard_needs_flag_outside_docs(nonpublic, tmp_path):
     out = tmp_path / "local.html"
     assert render(nonpublic, out).returncode != 0
     assert render(nonpublic, out, "--allow-nonpublic").returncode == 0 and out.exists()
+
+
+# ---- content system (scripts/report_content.py) ------------------------------------------
+
+sys.path.insert(0, str(ROOT / "scripts"))
+import report_content as rc  # noqa: E402
+
+
+def test_unknown_token_is_an_error():
+    with pytest.raises(rc.TemplateError, match="unknown token"):
+        rc.fill("<p>{{nope}}</p>", {"yes": 1}, {})
+    with pytest.raises(rc.TemplateError, match="unknown block"):
+        rc.fill("{{block:nope}}", {}, {})
+    with pytest.raises(rc.TemplateError, match="unknown format"):
+        rc.fill("{{x|5f}}", {"x": 0.5}, {})
+
+
+def test_formats():
+    facts = {"x": (0.3071, 0.4432), "a": 0.52345, "n": 1234, "s": "A & B", "p": 0.256}
+    out = rc.fill("{{x|range}} {{a}} {{a|2f}} {{n}} {{s}} {{p|pct}}", facts, {})
+    assert out == "0.31–0.44 0.523 0.52 1,234 A &amp; B 26%"
+
+
+def test_block_and_file_render():
+    blocks = {"t": "<table></table>"}
+    assert rc.fill("{{block:t}}", {}, blocks) == "<table></table>"
+    assert rc.fill("{{file:a/b.py}}", {}, {}) == "<code>a/b.py</code>"
+    assert rc.fill("{{file:a/b.py}}", {}, {}, repo_url="https://x/r") == \
+        '<a href="https://x/r/blob/main/a/b.py"><code>a/b.py</code></a>'
+
+
+def test_used_facts_are_recorded():
+    used = set()
+    rc.fill("{{a}} {{b|2f}}", {"a": 1, "b": 2.0, "c": 3}, {}, used=used)
+    assert used == {"a", "b"}
+
+
+def test_rendered_page_has_no_placeholders(page):
+    assert "{{" not in page and "}}" not in page.split("<script")[0]
+
+
+def test_render_fails_on_unknown_token(tmp_path):
+    content = tmp_path / "report"
+    shutil.copytree(ROOT / "report", content)
+    (content / "sections" / "conclusion.html").write_text("<p>{{no_such_fact}}</p>")
+    r = render(FIXTURE, tmp_path / "x.html", "--content", str(content))
+    assert r.returncode != 0 and "no_such_fact" in r.stderr and not (tmp_path / "x.html").exists()

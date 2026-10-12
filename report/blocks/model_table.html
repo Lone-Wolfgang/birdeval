@@ -1,0 +1,16 @@
+<div class="table-wrap"><table class="models">
+<thead><tr><th class="l"></th><th class="l"><span class="m1"><span class="swatch"></span>BirdNET 2.4</span></th><th class="l"><span class="m2"><span class="swatch"></span>BirdNET 3.0</span></th><th class="l"><span class="m3"><span class="swatch"></span>Perch V2</span></th><th class="l">Why it matters here</th></tr></thead>
+<tbody>
+<tr><td class="l">Release used</td><td class="l">V2.4 (Zenodo 15050749)</td><td class="l">BirdNET+ V3.0 Developer Preview 3.1, “Global 11K”, 2026-06-15 (doi:10.5281/zenodo.20703646)</td><td class="l">Perch 2.0, Google DeepMind (original on Kaggle: google/bird-vocalization-classifier)</td><td class="l"></td></tr>
+<tr><td class="l">Developer</td><td class="l">K. Lisa Yang Center, Cornell Lab of Ornithology &amp; Chemnitz University of Technology</td><td class="l">Same</td><td class="l">Google DeepMind</td><td class="l"></td></tr>
+<tr><td class="l">Sample rate</td><td class="l">48 kHz</td><td class="l">32 kHz</td><td class="l">32 kHz</td><td class="l" rowspan="2">High-pitched species: BirdNET hears up to 15 kHz, Perch's spectrogram reaches 16 kHz.</td></tr>
+<tr><td class="l">Frequency input</td><td class="l">0–15 kHz, two mel spectrograms (0–3 kHz and 0.5–15 kHz)</td><td class="l">0–15 kHz</td><td class="l">128 mel bins, 60 Hz–16 kHz</td></tr>
+<tr><td class="l">Window / hop in birdeval</td><td class="l">3 s / 1.5 s</td><td class="l">3 s / 1.5 s (the model accepts variable length)</td><td class="l">5 s / 2.5 s</td><td class="l">How model windows map onto BirdSet's 5-second labels.</td></tr>
+<tr><td class="l">Architecture</td><td class="l">EfficientNet-B0-like, 1024-d embedding</td><td class="l">Not documented</td><td class="l">EfficientNet-B3, ~12M parameters; linear, prototype and source-prediction heads; self-distillation</td><td class="l"></td></tr>
+<tr><td class="l">Classes</td><td class="l">6,522 (incl. 11 non-event)</td><td class="l">11,560: birds 9,834; insects 699; amphibians 647; mammals 350; other 30</td><td class="l">14,795 (14,597 species + 198 FSD50K sound classes)</td><td class="l">Coverage: BirdNET 2.4 cannot predict 4 BirdSet species, which count against it.</td></tr>
+<tr><td class="l">Training data</td><td class="l">Not documented</td><td class="l">Not documented (“much larger and more diverse”)</td><td class="l">1,542,778 recordings: xeno-canto 896,255; iNaturalist 571,698; Tierstimmenarchiv 33,859; FSD50K 40,966</td><td class="l">Directly relevant to underrepresented species.</td></tr>
+<tr><td class="l">Output used</td><td class="l">Logits</td><td class="l">Probabilities only, so logits are reconstructed</td><td class="l">Raw logits (high for every species)</td><td class="l">One threshold means something different for each model.</td></tr>
+<tr><td class="l">Geographic model (birdnet package)</td><td class="l">Yes</td><td class="l">Yes (Geomodel V3.0.4)</td><td class="l">No</td><td class="l">Available for BirdNET, not used here.</td></tr>
+<tr><td class="l">Model licence</td><td class="l">Not documented</td><td class="l">CC BY-SA 4.0 + preview terms of use</td><td class="l">Apache-2.0</td><td class="l"></td></tr>
+<tr><td class="l">Status</td><td class="l">Stable</td><td class="l">Developer preview</td><td class="l">Stable</td><td class="l">BirdNET 3.0's models and labels will change.</td></tr>
+</tbody></table></div>

@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import re
 import subprocess
 import sys
 from html import escape
@@ -22,6 +23,9 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+
+sys.path.insert(0, str(Path(__file__).parent))
+from report_content import TemplateError, build_facts, fill, render_sections, repo_link  # noqa: E402
 
 MODELS = {  # fixed order and colour slot: colour follows the model, never its rank
     "birdnet_2.4": ("BirdNET 2.4", "m1"),
@@ -118,7 +122,6 @@ p { margin: 0; max-width: 70ch; }
 section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 #view { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .lede { color: var(--muted); }
-ul.takeaways { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; max-width: 74ch; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--c); }
@@ -171,6 +174,9 @@ th .arrow { font-size: 10px; width: 1ch; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr:hover td { background: var(--hover); }
 tr.total td { border-top: 2px solid var(--rule); font-weight: 600; }
+table.models td, table.static td { white-space: normal; vertical-align: top; min-width: 9em; }
+table.models td:first-child { font-weight: 600; min-width: 8em; }
+table.models td:last-child { color: var(--muted); min-width: 14em; }
 td.best { font-weight: 700; }
 td.dim { color: var(--muted); }
 .ci-txt { color: var(--muted); font-size: 12px; font-weight: 400; }
@@ -853,6 +859,9 @@ TOC_JS = r"""
 """
 
 
+TOL = 0.02  # replication tolerance, as in scripts/compare_published.py
+
+
 def model_name(m: str) -> str:
     return MODELS.get(m, (m, "m1"))[0]
 
@@ -872,141 +881,86 @@ def static_table(head: list[str], body: list[list[str]], left_cols: int = 1) -> 
     return f'<div class="table-wrap"><table><thead><tr>{th}</tr></thead><tbody>{trs}</tbody></table></div>'
 
 
-def published_section(p: pd.DataFrame) -> str:
+def replication_table(p: pd.DataFrame, tol: float) -> str:
+    """Perch V2 against the published Perch 2.0 range, one row per site x metric."""
     if p.empty:
-        return ""
+        return '<div class="empty">No published comparison yet.</div>'
     names = {"cmAP": "cmAP", "AUROC": "AUROC", "top1": "Top-1"}
     body = []
     for _, r in p.sort_values(["site", "metric"]).iterrows():
-        chip = ('<span class="chip warn">Outside</span>' if r["flag"] in (True, "True")
-                else '<span class="chip ok">Within</span>')
-        body.append([r["site"], names.get(r["metric"], r["metric"]), fmt(r["ours"]),
+        out = r["flag"] in (True, "True")
+        chip = '<span class="chip warn">Outside</span>' if out else '<span class="chip ok">Within</span>'
+        body.append([escape(r["site"]), names.get(r["metric"], r["metric"]), fmt(r["ours"]),
                      f'{fmt(r["pub_lo"])}–{fmt(r["pub_hi"])}', f'{r["delta"]:+.3f}', chip])
-    n_ok = int((~p["flag"].astype(str).eq("True")).sum())
-    sites = ", ".join(sorted(p["site"].unique()))
-    return f"""<p class="lede">Perch V2 in clips mode against the three Perch 2.0 variants in van Merriënboer et al. 2025
-  (arXiv:2508.04665, Appendix C, Table 4). A value counts as within if it is no more than 0.02 outside the published
-  range. {n_ok} of {len(p)} values on {escape(sites)} are within.</p>
-  <details><summary>Show the table</summary>
-  {static_table(["Site", "Metric", "Ours", "Published", "Distance", "Result"], body, left_cols=2)}
-  </details>
-  <p class="meta">POW is not in the Perch 2.0 table: BirdSet uses it as a validation set.
-  BirdNET has no published per-site figures; BirdSet left it out because its training data may overlap the test sets.</p>"""
+    return static_table(["Site", "Metric", "Ours", "Published range", "Distance", "Result"], body, left_cols=2)
 
 
-def takeaways(h: pd.DataFrame, p: pd.DataFrame, g: pd.DataFrame, models: list[str],
-              hourly: pd.DataFrame | None = None) -> str:
-    items = []
-    clips = h[(h["mode"] == "clips")]
-    allrow = clips[clips.site == "All"].set_index("model")
-    per = clips[clips.site != "All"]
-    if not allrow.empty:
-        n = len(allrow["sites"].iloc[0].split())
-        rank = allrow["cmAP"].sort_values(ascending=False)
-        items.append(f"<li>Averaged over {n} sites, clips cmAP is "
-                     + ", ".join(f"{escape(model_name(m))} {v:.3f}" for m, v in rank.items()) + ".</li>")
-    wins: dict[str, list[str]] = {}
-    overlap = []
-    for s, sub in per.groupby("site"):
-        sub = sub.sort_values("cmAP", ascending=False)
-        if len(sub) < 2:
-            continue
-        a, b = sub.iloc[0], sub.iloc[1]
-        wins.setdefault(a.model, []).append(s)
-        if a.cmAP_lo <= b.cmAP_hi:
-            overlap.append(s)
-    if wins:
-        parts = [f"{escape(model_name(m))} on {', '.join(sorted(ss))}" for m, ss in
-                 sorted(wins.items(), key=lambda kv: -len(kv[1]))]
-        items.append("<li>Highest cmAP per site: " + "; ".join(parts) + "."
-                     + (f" The top two models' intervals overlap on {', '.join(sorted(overlap))}." if overlap else "")
-                     + "</li>")
-    scape = h[(h["mode"] == "scape") & (h.site == "All")].set_index("model")
-    if not scape.empty:
-        rank = scape["rec_recall90"].sort_values(ascending=False)
-        items.append("<li>In the soundscapes, recall at 90% precision per recording unit (mean over sites) is "
-                     + ", ".join(f"{escape(model_name(m))} {v:.2f}" for m, v in rank.items())
-                     + ": the gap between models is larger than in cmAP.</li>")
-    if not p.empty:
-        n_ok = int((~p["flag"].astype(str).eq("True")).sum())
-        items.append(f"<li>Perch V2 matches the Perch 2.0 paper: {n_ok} of {len(p)} published values on "
-                     f"{len(p['site'].unique())} sites are reproduced within 0.02.</li>")
-    ab = g[(g["mode"] == "clips") & (g.scope == "All") & (g.grouping == "prevalence")]
-    if not ab.empty:
-        first, last = ab.group.iloc[0], ab.group.iloc[-1]
-        lo = ab[ab.group == first].set_index("model").mean_ap
-        hi = ab[ab.group == last].set_index("model").mean_ap
-        items.append(f"<li>Every model does better on species with many labelled segments ({escape(last)}: "
-                     f"{hi.min():.2f}–{hi.max():.2f} mean AP) than on rare ones ({escape(first)}: "
-                     f"{lo.min():.2f}–{lo.max():.2f}).</li>")
-    if hourly is not None and (hourly.site == "All").any():
-        a = hourly[hourly.site == "All"]
-        by = a.groupby("hour")["AUROC"].mean()
-        def hour_txt(hr: int) -> str:
-            r = a[a.hour == hr]
-            sign = lambda v: ("+" if v >= 0 else "−") + f"{abs(v):.2f}"
-            n_cls, n_rec = int(r.n_classes.max()), int(r.n_files.iloc[0])
-            return (f"{hr:02d}:00 ({sign(r.AUROC.min())} to {sign(r.AUROC.max())} across models; "
-                    f"{escape(r.sites.iloc[0].replace(' ', ', '))}, {n_rec} recordings, {n_cls} species)")
-        items.append(f"<li>By hour of day, against each site's own all-day AUROC, the models do worst at "
-                     f"{hour_txt(int(by.idxmin()))} and best at {hour_txt(int(by.idxmax()))}. Hours other than "
-                     f"dawn rest on one to three sites; see the Hours view.</li>")
-    return f'<ul class="takeaways">{"".join(items)}</ul>'
+def site_table(sites: pd.DataFrame, h: pd.DataFrame, density: pd.DataFrame | None) -> str:
+    """BirdSet's sites: where, which biome, how much audio and how densely labelled."""
+    d = density.set_index("site") if density is not None else None
+    present = set(h.site) - {"All"}
+    head = ["Site", "Name", "Region", "Biome"]
+    if d is not None:
+        head += ["Recordings", "Length", "Hours", "Species", "Clips labelled", "Species per recording"]
+    body = []
+    for _, r in sites[sites.site.isin(present)].iterrows():
+        row = [f"<strong>{escape(r.site)}</strong>", escape(r["name"]), escape(r.region), escape(r.biome)]
+        if d is not None and r.site in d.index:
+            x = d.loc[r.site]
+            row += [f"{int(x.recordings):,}", escape(str(x.length)), f"{x.hours:g}", str(int(x.species)),
+                    f"{round(100 * x.share_labelled)}%", f"{x.species_per_recording:.1f}"]
+        elif d is not None:
+            row += ["–"] * 6
+        body.append(row)
+    return static_table(head, body, left_cols=4)
 
 
 def records(df: pd.DataFrame) -> list[dict]:
     return json.loads(df.to_json(orient="records"))  # NaN -> null
 
 
-SECTIONS = [  # (id, number, title, [(sub id, number, title)])
-    ("intro", "1", "Introduction", []),
-    ("methods", "2", "Methods", [
-        ("methods-sound", "2.1", "From sound to prediction"),
-        ("methods-dataset", "2.2", "Dataset: BirdSet"),
-        ("methods-models", "2.3", "Models: shared approach, different decisions"),
-        ("methods-pipeline", "2.4", "Running the models side by side"),
-        ("methods-criteria", "2.5", "Evaluation criteria"),
-    ]),
-    ("results", "3", "Results", [
-        ("results-replication", "3.1", "Replication"),
-        ("results-baseline", "3.2", "Overall baseline"),
-        ("results-weakest", "3.3", "Where performance is weakest"),
-        ("explorer", "3.4", "Species-level data and the explorer"),
-    ]),
-    ("conclusion", "4", "Conclusion", []),
-    ("reproduce", "", "Reproduce this", []),
-    ("references", "", "References and licences", []),
+SECTIONS = [  # (id = report/sections/<id>.html, number, title); subsections come from the files
+    ("intro", "1", "Introduction"),
+    ("methods", "2", "Methods"),
+    ("results", "3", "Results"),
+    ("conclusion", "4", "Conclusion"),
+    ("reproduce", "", "Reproduce this"),
+    ("references", "", "References and licences"),
 ]
+SUBSECTION = re.compile(r'<section id="([^"]+)">\s*<h3>(.*?)</h3>', re.S)
+NUMBERED = re.compile(r"^(\d+(?:\.\d+)*)\s+")
 
 
-def toc() -> str:
-    def li(i, n, t, subs=()):
-        inner = f"<ol>{''.join(li(*x) for x in subs)}</ol>" if subs else ""
-        return f'<li><a href="#{i}">{escape((n + " ") if n else "")}{escape(t)}</a>{inner}</li>'
-    items = "".join(li(i, n, t, subs) for i, n, t, subs in SECTIONS)
+def heading_html(level: int, num: str, title_html: str) -> str:
+    n = f'<span class="secnum">{escape(num)}</span>' if num else ""
+    return f"<h{level}>{n}{title_html}</h{level}>"
+
+
+def number_subheadings(html: str) -> str:
+    """'<h3>2.1 Title</h3>' -> the number in its own span, styled like the section numbers."""
+    def one(m):
+        title = m.group(2)
+        n = NUMBERED.match(title)
+        return (f'<section id="{m.group(1)}">' +
+                (heading_html(3, n.group(1), title[n.end():]) if n else f"<h3>{title}</h3>"))
+    return SUBSECTION.sub(one, html)
+
+
+def toc(contents: dict[str, str]) -> str:
+    def li(i, label, subs=""):
+        return f'<li><a href="#{i}">{label}</a>{subs}</li>'
+    items = []
+    for sid, num, title in SECTIONS:
+        subs = [li(i, re.sub(r"<[^>]+>", "", t).strip()) for i, t in SUBSECTION.findall(contents.get(sid, ""))]
+        items.append(li(sid, escape((num + " ") if num else "") + escape(title), f"<ol>{''.join(subs)}</ol>" if subs else ""))
     return (f'<nav class="toc" aria-label="Contents"><div class="toc-title">Contents</div>'
             f'<button class="toc-toggle" aria-expanded="false" aria-controls="toc-list">Contents'
             f'<span class="toc-now"></span></button>'
-            f'<div class="toc-list" id="toc-list"><ol>{items}</ol></div></nav>')
+            f'<div class="toc-list" id="toc-list"><ol>{"".join(items)}</ol></div></nav>')
 
 
-def heading(level: int, num: str, title: str) -> str:
-    n = f'<span class="secnum">{escape(num)}</span>' if num else ""
-    return f"<h{level}>{n}{escape(title)}</h{level}>"
-
-
-def section(sid: str, body: dict[str, str]) -> str:
-    """One top-level section with its subsections; body maps an id to its inner HTML."""
-    _, num, title, subs = next(x for x in SECTIONS if x[0] == sid)
-    inner = "".join(f'<section id="{i}">{heading(3, n, t)}{body.get(i, "")}</section>' for i, n, t in subs)
-    return f'<section id="{sid}">{heading(2, num, title)}{body.get(sid, "")}{inner}</section>'
-
-
-def repo_link(path: str, repo_url: str) -> str:
-    """A repo file: a link when the repo URL is known, else code text."""
-    if repo_url:
-        return f'<a href="{escape(repo_url.rstrip("/"))}/blob/main/{escape(path)}"><code>{escape(path)}</code></a>'
-    return f"<code>{escape(path)}</code>"
+def section_html(sid: str, num: str, title: str, inner: str) -> str:
+    return f'<section id="{sid}">{heading_html(2, num, escape(title))}{number_subheadings(inner)}</section>'
 
 
 def git_version() -> str | None:
@@ -1040,6 +994,7 @@ def main() -> None:
     ap.add_argument("--report", type=Path, default=Path("results/report"))
     ap.add_argument("--sites", type=Path, default=Path("configs/reference/sites.csv"))
     ap.add_argument("--config", type=Path, default=Path("configs/report.yaml"))
+    ap.add_argument("--content", type=Path, default=Path("report"), help="sections/ and blocks/ with the prose")
     ap.add_argument("--out", type=Path, default=Path("docs/index.html"))
     ap.add_argument("--title")
     ap.add_argument("--repo-url")
@@ -1097,10 +1052,7 @@ def main() -> None:
                         for s, n in zip(sites_df.site, sites_df.name))
     scape_sites = sorted(set(h[h["mode"] == "scape"].site) - {"All"})
     clip_sites = sorted(set(h[h["mode"] == "clips"].site) - {"All"})
-    link = lambda path: repo_link(path, repo_url)  # noqa: E731
 
-    xc_note = (f" Xeno-canto counts were queried on {xc_date}: they are today's counts, larger than what any model "
-               "trained on, and xeno-canto's IOC names can split or lump differently from eBird's." if xc_date else "")
     explorer = f"""<div class="controls" role="group" aria-label="Report filters">
     <div class="ctl"><span class="ctl-label" id="l-mode">Mode</span>
       <div class="seg" data-key="mode" aria-labelledby="l-mode">
@@ -1112,45 +1064,29 @@ def main() -> None:
         <button data-v="overview">Overview</button><button data-v="groups">Groups</button><button data-v="species">Species</button><button data-v="hours">Hours</button></div></div>
   </div>
   <div id="view" aria-live="polite"></div>"""
-    notes = f"""<ul class="notes">
-    <li>BirdNET may have been trained on recordings from these test sets, so its scores may be optimistic.
-    BirdSet excluded it for this reason.</li>
-    <li>Species names follow the 2025 eBird taxonomy. Older model names are mapped through
-    {link("configs/taxonomy/synonyms.yaml")}. Every species at every site is scored for every model, including the 4 species
-    BirdNET 2.4 cannot predict, which count against it.</li>
-    <li>Per-species AP is noisy for species with only a few labelled segments; group means pool many species but
-    their intervals still widen as groups get small.</li>
-    <li>Site biomes are WWF biomes assigned per site ({link("configs/reference/sites.csv")}); the sites are small areas, so
-    a label describes the site's setting, not every recorder.</li>
-    <li>POW is BirdSet's validation set, not a test set. It is included here like the others.</li>
-    <li>Calling times and call frequency bands come from BirdSet's call-level annotations ({link("scripts/site_calls.py")}).
-    BirdSet's “local_time” is UTC for PER and SSW (their file names end in Z); those are converted to local time.
-    Most sites record only around dawn (PER 05–06 h, POW and HSN about 05–09 h); SSW records all day and UHH 05–23 h,
-    so only those two show full daily patterns. Activity is calls per recorded hour, and unrecorded hours are shown as
-    unknown. NBP has no times or frequency boxes.</li>
-    <li>Body mass, lifestyle and habitat are AVONET; diet, foraging stratum and the nocturnal flag are EltonTraits 1.0,
-    matched to eBird names through AVONET's crosswalk.{xc_note}</li>
-  </ul>"""
-    definitions = """<dl>
-    <dt>cmAP</dt><dd>Average precision per species, averaged over species. Treats rare and common species equally.</dd>
-    <dt>AUROC</dt><dd>Chance a positive segment scores higher than a negative one, averaged over species.</dd>
-    <dt>Top-1</dt><dd>Share of segments with at least one label where the top-scoring species is one of them.</dd>
-    <dt>Recording cmAP</dt><dd>cmAP for species presence per recording unit, from soundscape mode.</dd>
-    <dt>Recall @90%P</dt><dd>At the single score threshold where 90% of a model's claims are correct, the share of
-    true presences it finds. Per clip in clips mode, per recording unit in soundscape mode.</dd>
-    <dt>Positives</dt><dd>Labelled 5-second segments with the species at that site.</dd>
-  </dl>"""
-    body = {
-        "intro": f"""<p>{", ".join(escape(model_name(m)) for m in models)} on {len(sites)} BirdSet test sites.
-  Clips mode follows BirdSet's protocol: every species in the site's label set, 5-second test clips
-  ({len(clip_sites)} sites). Soundscape mode scores the full recordings ({len(scape_sites)} sites).</p>""",
-        "methods-dataset": notes,
-        "methods-criteria": definitions,
-        "results-replication": published_section(p),
-        "results-baseline": takeaways(h, p, g, models, hourly),
+    density_f = args.sites.with_name("site_density.csv")
+    density = pd.read_csv(density_f, comment="#") if density_f.exists() else None
+    facts = build_facts(h, p, g, sp, sites_df, tol=TOL, density=density)
+    facts |= {"model_names": ", ".join(model_name(m) for m in models), "generated": today}
+    if xc_date:
+        facts["xc_query_date"] = str(xc_date)
+    blocks = {
         "explorer": explorer,
+        "replication_table": replication_table(p, TOL),
+        "site_table": site_table(sites_df, h, density),
     }
-    sections = "".join(section(sid, body) for sid, *_ in SECTIONS)
+    used: set = set()
+    try:
+        # static, author-edited blocks (report/blocks/*.html) may use tokens too
+        for f in sorted(args.content.glob("blocks/*.html")):
+            blocks[f.stem] = fill(f.read_text(), facts, blocks, repo_url, used, where=f"blocks/{f.name}")
+        contents, used_s = render_sections(args.content / "sections", [x[0] for x in SECTIONS], facts, blocks, repo_url)
+    except TemplateError as e:
+        sys.exit(f"render_report: {e}")
+    used |= used_s
+    for k in sorted(set(facts) - used):
+        print(f"warning: fact {k!r} is not used in the prose")
+    sections = "".join(section_html(sid, num, title, contents[sid]) for sid, num, title in SECTIONS)
     version_txt = f" · results version {escape(version)}" if version else ""
     repo_txt = f' · <a href="{escape(repo_url)}">Source code</a>' if repo_url else ""
     page = f"""<!doctype html>
@@ -1180,13 +1116,13 @@ def main() -> None:
   <p class="byline">{escape(author)}</p>
   <p class="meta">Generated {today}{version_txt}{repo_txt}</p>
 </header>
-{toc()}
+{toc(contents)}
 <main>
 <article class="report">
 {sections}
 </article>
 </main>
-<footer><p>{escape(author)} · generated {today} by {link("scripts/render_report.py")}.</p></footer>
+<footer><p>{escape(author)} · generated {today} by {repo_link("scripts/render_report.py", repo_url)}.</p></footer>
 </div>
 <script type="application/json" id="report-data">{{blob}}</script>
 <script>{{JS}}</script>

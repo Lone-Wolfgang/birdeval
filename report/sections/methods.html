@@ -1,0 +1,56 @@
+<section id="methods-sound">
+<h3>2.1 From sound to prediction</h3>
+<p>Each model hears a fixed window of audio and returns a score for every species it knows.</p>
+</section>
+
+<section id="methods-dataset">
+<h3>2.2 Dataset: BirdSet</h3>
+{{block:site_table}}
+<ul class="notes">
+  <li>Site biomes are WWF biomes assigned per site ({{file:configs/reference/sites.csv}}); the sites are small areas,
+  so a label describes the site's setting, not every recorder.</li>
+  <li>POW is BirdSet's validation set, not a test set. It is included here like the others.</li>
+  <li>Calling times and call frequency bands come from BirdSet's call-level annotations
+  ({{file:scripts/site_calls.py}}). BirdSet's “local_time” is UTC for PER and SSW (their file names end in Z); those are
+  converted to local time. Most sites record only around dawn (PER 05–06 h, POW and HSN about 05–09 h); SSW records all
+  day and UHH 05–23 h, so only those two show full daily patterns. Activity is calls per recorded hour, and unrecorded
+  hours are shown as unknown. NBP has no times or frequency boxes.</li>
+  <li>Body mass, lifestyle and habitat are AVONET; diet, foraging stratum and the nocturnal flag are EltonTraits 1.0,
+  matched to eBird names through AVONET's crosswalk. Xeno-canto counts were queried on {{xc_query_date}}: they are
+  today's counts, larger than what any model trained on, and xeno-canto's IOC names can split or lump differently from
+  eBird's.</li>
+</ul>
+</section>
+
+<section id="methods-models">
+<h3>2.3 Models: shared approach, different decisions</h3>
+{{block:model_table}}
+<ul class="notes">
+  <li>BirdNET may have been trained on recordings from these test sets, so its scores may be optimistic. BirdSet
+  excluded it for this reason.</li>
+</ul>
+</section>
+
+<section id="methods-pipeline">
+<h3>2.4 Running the models side by side</h3>
+<ul class="notes">
+  <li>Species names follow the 2025 eBird taxonomy. Older model names are mapped through
+  {{file:configs/taxonomy/synonyms.yaml}}. Every species at every site is scored for every model, including the 4
+  species BirdNET 2.4 cannot predict, which count against it.</li>
+</ul>
+</section>
+
+<section id="methods-criteria">
+<h3>2.5 Evaluation criteria</h3>
+<dl>
+  <dt>cmAP</dt><dd>Average precision per species, averaged over species. Treats rare and common species equally.</dd>
+  <dt>AUROC</dt><dd>Chance a positive segment scores higher than a negative one, averaged over species.</dd>
+  <dt>Top-1</dt><dd>Share of segments with at least one label where the top-scoring species is one of them.</dd>
+  <dt>Recording cmAP</dt><dd>cmAP for species presence per recording unit, from soundscape mode.</dd>
+  <dt>Recall @90%P</dt><dd>At the single score threshold where 90% of a model's claims are correct, the share of true
+  presences it finds. Per clip in clips mode, per recording unit in soundscape mode.</dd>
+  <dt>Positives</dt><dd>Labelled 5-second segments with the species at that site.</dd>
+</dl>
+<p>Per-species AP is noisy for species with only a few labelled segments; group means pool many species but their
+intervals still widen as groups get small.</p>
+</section>
