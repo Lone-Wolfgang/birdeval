@@ -148,6 +148,9 @@ def overlay_svg(boxes: list[Box], span: float, seg: tuple[float, float], file_of
         o.append(f'<image class="spec-{theme}" href="{escape(href)}" x="{left}" y="{top}" width="{pw}" height="{ph}" '
                  f'preserveAspectRatio="none"/>')
     o.append(f'<rect class="spec-frame" x="{left}" y="{top}" width="{pw}" height="{ph}"/>')
+    # the seekable area: the page's script reads the time axis from it (data-*) and seeks on clicks inside
+    o.append(f'<rect class="seek" x="{left}" y="{top}" width="{pw}" height="{ph}" data-x0="{left}" '
+             f'data-x1="{left + pw}" data-span="{span:g}"/>')
     for khz in [1, 2, 4, 8, 16]:
         yy = y(khz * 1000)
         o.append(f'<line class="gridline" x1="{left - 4}" x2="{left}" y1="{yy:.1f}" y2="{yy:.1f}"/>'
@@ -202,6 +205,8 @@ def overlay_svg(boxes: list[Box], span: float, seg: tuple[float, float], file_of
                      f'x="{x(c0) + 1:.1f}" y="{yy}" width="{max(x(c1) - x(c0) - 2, 1):.1f}" height="{lane_h}" rx="3"/></g>')
         o.append(f'<text class="gsub" x="{left + pw}" y="{ry + 2 * lane_h + lane_gap + 12}" text-anchor="end">'
                  f'{length:g} s windows every {hop:g} s</text>')
+    # playhead, moved by the page's script while clip.mp3 plays
+    o.append(f'<line class="playhead" x1="{left}" x2="{left}" y1="{top}" y2="{rows_top + row_h * len(MODELS)}" visibility="hidden"/>')
     o.append("</svg>")
     return "".join(o)
 

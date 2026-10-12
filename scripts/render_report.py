@@ -140,6 +140,9 @@ figcaption { font-size: 13.5px; color: var(--muted); max-width: 74ch; }
 .seg-edge { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
 .callbox { fill: none; stroke: var(--fg); stroke-width: 1.5; opacity: .85; }
 .boxlabel { fill: var(--fg); font-size: 12px; font-weight: 600; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.seek, .seg-hi, .callbox, .boxlabel { cursor: pointer; }
+.seek { fill: transparent; }
+.playhead { stroke: var(--accent); stroke-width: 2; pointer-events: none; }
 .win { fill: none; stroke: var(--c); stroke-width: 1.5; }
 .win.on { fill: var(--c); }
 .pbox rect { fill: var(--surface); stroke: var(--rule); stroke-width: 1.5; }
@@ -918,6 +921,36 @@ TOC_JS = r"""
   }, {rootMargin: "0px 0px -70% 0px"});
   targets.forEach(t => io.observe(t));
 })();
+
+// Spectrogram figure: a playhead follows the clip; clicking the spectrogram plays from that time.
+document.querySelectorAll("figure").forEach(fig => {
+  const audio = fig.querySelector("audio"), seek = fig.querySelector(".seek"), head = fig.querySelector(".playhead");
+  if (!audio || !seek || !head) return;
+  const x0 = +seek.dataset.x0, x1 = +seek.dataset.x1, span = +seek.dataset.span;
+  const svg = seek.ownerSVGElement, y0 = +seek.getAttribute("y"), y1 = y0 + +seek.getAttribute("height");
+  let frame = 0;
+  const draw = () => {
+    const x = x0 + Math.min(audio.currentTime / span, 1) * (x1 - x0);
+    head.setAttribute("x1", x); head.setAttribute("x2", x);
+    head.setAttribute("visibility", audio.currentTime > 0 || !audio.paused ? "visible" : "hidden");
+    // on narrow screens the figure scrolls sideways: keep the playhead in view while playing
+    const box = svg.parentElement;
+    if (!audio.paused && box.scrollWidth > box.clientWidth) {
+      const px = x / svg.viewBox.baseVal.width * svg.clientWidth;
+      if (px < box.scrollLeft + 24 || px > box.scrollLeft + box.clientWidth - 24) box.scrollLeft = px - box.clientWidth / 3;
+    }
+  };
+  const loop = () => { draw(); frame = audio.paused ? 0 : requestAnimationFrame(loop); };
+  audio.addEventListener("play", () => { if (!frame) frame = requestAnimationFrame(loop); });
+  ["pause", "seeked", "ended", "timeupdate"].forEach(e => audio.addEventListener(e, draw));
+  svg.addEventListener("click", e => {
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+    if (p.x < x0 || p.x > x1 || p.y < y0 || p.y > y1) return;
+    const t = Math.max(0, Math.min(1, (p.x - x0) / (x1 - x0))) * span;
+    const go = () => { audio.currentTime = t; draw(); audio.play(); };
+    if (audio.readyState >= 1) go(); else { audio.addEventListener("loadedmetadata", go, {once: true}); audio.load(); }
+  });
+});
 """
 
 
@@ -1023,7 +1056,9 @@ def fig_spectrogram(assets: Path, clip: dict | None, audio: bool) -> str:
             f'BirdSet’s call annotations; the shaded band is one labelled 5-second segment, with its neighbours either '
             f'side. Below, the windows each model scores: BirdNET 3-second windows every 1.5 seconds, Perch 5-second '
             f'windows every 2.5 seconds. A filled window has more than half of its length inside the labelled segment, '
-            f'so its score counts for that segment; the others count for a neighbour.</figcaption></figure>')
+            f'so its score counts for that segment; the others count for a neighbour.'
+            f'{" A line follows the sound as it plays; click the spectrogram to play from that point." if sound else ""}'
+            f'</figcaption></figure>')
 
 
 def records(df: pd.DataFrame) -> list[dict]:
